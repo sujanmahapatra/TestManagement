@@ -8,7 +8,9 @@ services:
     name: test-management
     runtime: node
     plan: free
-    buildCommand: cd web && npm ci && npm run build && cd ../server && npm ci --omit=dev
+    # --include=dev: NODE_ENV=production below makes npm skip devDependencies,
+    # and the web build needs Vite, which is one.
+    buildCommand: cd web && npm ci --include=dev && npm run build && cd ../server && npm ci --omit=dev
     startCommand: cd server && node src/index.js
     healthCheckPath: /healthz
     envVars:
