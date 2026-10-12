@@ -1,5 +1,6 @@
+import { useEffect, useRef } from 'react';
 import { Box, Button } from '@mui/material';
-import { AiBadge, CheckIcon } from './icons';
+import { AiBadge, CheckIcon, SparkleIcon } from './icons';
 import { HERO_GRADIENT } from './theme';
 import { AGENT_STAGES } from '../domain/agent';
 
@@ -37,6 +38,55 @@ export const stageState = (running, index) => {
   return index < at ? 'done' : index === at ? 'active' : 'pending';
 };
 
+/** "Scanned 42 test cases · 6 related" -- what the repository scan found. */
+export const contextLabel = (c) => {
+  if (!c) return '';
+  const parts = [];
+  if (c.scanned) parts.push(`Scanned ${c.scanned} saved test cases · ${c.related} related`);
+  if (c.folders) parts.push(`${c.folders} ${c.folders === 1 ? 'folder' : 'folders'} added`);
+  return parts.join(' · ') || 'No saved test cases yet';
+};
+
+/**
+ * The agent's reasoning as it streams: a rolling window that follows the
+ * newest text, the way an AI panel shows its step-by-step analysis.
+ */
+export function LiveReasoning({ text, maxHeight = 180 }) {
+  const box = useRef(null);
+  useEffect(() => {
+    if (box.current) box.current.scrollTop = box.current.scrollHeight;
+  }, [text]);
+  if (!text) return null;
+  return (
+    <Box sx={{ mt: 3, width: '100%', textAlign: 'left' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, fontSize: 12, fontWeight: 600, color: 'var(--tm-ai)', textTransform: 'uppercase', letterSpacing: '.04em', mb: 0.75 }}>
+        <SparkleIcon size={13} /> Live reasoning
+      </Box>
+      <Box
+        ref={box}
+        aria-live="off"
+        sx={{
+          maxHeight,
+          overflowY: 'auto',
+          whiteSpace: 'pre-wrap',
+          fontSize: 13,
+          lineHeight: 1.55,
+          color: 'var(--tm-ink-soft)',
+          bgcolor: 'var(--tm-ai-soft)',
+          border: '1px solid #ede9fe',
+          borderRadius: '8px',
+          px: 1.5,
+          py: 1.25,
+          // Fade the oldest lines out at the top.
+          maskImage: 'linear-gradient(to bottom, transparent 0, #000 28px)',
+        }}
+      >
+        {text}
+      </Box>
+    </Box>
+  );
+}
+
 /** Step two: what the agent is doing, while it does it. */
 export default function GenerateProgress({ running, onStop, fileCount }) {
   return (
@@ -45,7 +95,7 @@ export default function GenerateProgress({ running, onStop, fileCount }) {
         aria-live="polite"
         sx={{
           width: '100%',
-          maxWidth: 520,
+          maxWidth: 640,
           bgcolor: 'var(--tm-surface)',
           border: '1px solid var(--tm-rule)',
           borderRadius: '14px',
@@ -88,10 +138,23 @@ export default function GenerateProgress({ running, onStop, fileCount }) {
                     {running.drafted} drafted
                   </Box>
                 )}
+                {stage.key === 'scan' && running.context && (
+                  <Box component="span" sx={{ ml: 'auto', fontSize: 13, color: 'var(--tm-muted)' }}>
+                    {contextLabel(running.context)}
+                  </Box>
+                )}
               </Box>
             );
           })}
         </Box>
+
+        <LiveReasoning text={running.reasoning} />
+
+        {running.notices?.map((n) => (
+          <Box key={n} sx={{ mt: 1.5, fontSize: 13, color: 'var(--tm-warn)', bgcolor: 'var(--tm-warn-soft)', borderRadius: '6px', px: 1.25, py: 0.75, width: '100%', textAlign: 'left' }}>
+            {n}
+          </Box>
+        ))}
 
         <Button variant="text" onClick={onStop} sx={{ mt: 3, color: 'var(--tm-muted)' }}>
           Stop generating

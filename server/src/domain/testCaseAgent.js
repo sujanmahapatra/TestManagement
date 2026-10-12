@@ -9,8 +9,8 @@ import { logger } from '../logger.js';
 import { AppError } from '../utils/errors.js';
 import { generationConfig } from './generationConfig.js';
 import { AGENT_FILE_TYPES, CATEGORIES, DATASET_LIMITS, EDIT_LIMITS, PRIORITIES } from './testCase.js';
-import { titlesIn } from './repository.js';
-import { groqChat, supportsStrictSchema } from '../clients/groq.js';
+import { relatedCases, titlesIn } from './repository.js';
+import { groqChat, groqStream, supportsStrictSchema } from '../clients/groq.js';
 import { docxToText, pdfToText, pptxToText, xlsxToText } from './officeText.js';
 
 /**
@@ -61,6 +61,9 @@ const CaseOut = z.object({
 const AgentOut = z.object({
   summary: z.string().describe('What the requirement covers and how the suite tests it, in two to four sentences.'),
   assumptions: z.array(z.string()).describe('Ambiguities in the requirement and what was assumed for each.'),
+  gaps: z
+    .array(z.string())
+    .describe('What the requirement leaves out that a tester needs: personas, goals, acceptance criteria, exact messages, limits. Empty when it is complete.'),
   changeSummary: z.string().describe('Refinement only: what changed and why, in one to three sentences. Empty on a first run.'),
   scenarios: z.array(
     z.object({
@@ -77,10 +80,11 @@ const AgentOut = z.object({
 const SYSTEM = `You are a senior QA engineer working as a test case generation agent. You read product requirements -- PRDs, user stories, specifications, screenshots and design mockups -- and write manual test cases that a tester can execute without further explanation.
 
 How to work:
-1. Analyse the requirement. Identify the features, user flows, business rules, inputs and their constraints, states and roles it describes.
-2. Group the test cases into scenarios, one per feature or user flow.
-3. In each scenario, cover the happy path first, then the negative cases (invalid input, missing permission, failure of a dependency) and edge cases (limits, empty states, repeated or concurrent actions) the requirement implies.
-4. Summarise what you understood and covered, and list the assumptions you made where the requirement is ambiguous.
+1. Analyse the requirement. Identify the features, user flows, business rules, inputs and their constraints, states, roles, dependencies and risks it describes. Requirements are often fragmented or vague; work from every source given -- documents, design structure, screenshots, tickets -- together.
+2. Group the test cases into scenarios: one flow-based scenario per user flow for functional cases, and every non-functional case (performance, security, accessibility, compatibility, reliability) together in one scenario named "Non-functional requirements".
+3. In each scenario, cover the happy path first, then the negative cases (invalid input, missing permission, failure of a dependency), then the edge cases people miss: boundaries and limits, timing windows, empty and maximum states, repeated or concurrent actions, interrupted flows, other users and devices affected by the action.
+4. Summarise what you understood and covered, list the assumptions you made where the requirement is ambiguous, and list the gaps: what the requirement leaves out that a tester needs.
+5. When a design's structure is given (layer names, text, components and their properties, interactions), use it: screen and button names, visible text and prototype navigation describe the intended flows.
 
 Test case quality:
 - A title says what is verified, e.g. "Login fails with an expired password".
@@ -187,419 +191,461 @@ async function requirementBlocks({ files, prompt }) {
         source: { type: 'base64', media_type: 'application/pdf', data: file.data },
       });
     } else {
-        blocks.push({
-          type: 'document',
-          title: file.name,
-          source: { type: 'text', media_type: 'text/plain', data: Buffer.from(file.data, 'base64').toString('utf8') },
-        });
-      }
+      blocks.push({
+        type: 'document',
+        title: file.name,
+        source: { type: 'text', media_type: 'text/plain', data: Buffer.from(file.data, 'base64').toString('utf8') },
+      });
     }
-
-    blocks.push({
-      type: 'text',
-      text: prompt
-        ? `<requirement>\n${prompt}\n</requirement>`
-        : '<requirement>\nSee the attachments.\n</requirement>',
-      // A refinement resends the same attachments, so they are read from cache.
-      cache_control: { type: 'ephemeral' },
-    });
-    return blocks;
   }
 
-  /** The fields the model needs to revise a case, without UI-only state. */
-  const forModel = (tc) => ({
-    id: tc.id,
-    scenario: tc.scenario,
-    title: tc.title,
-    description: tc.description,
-    kind: tc.kind,
-    priority: tc.priority,
-    category: tc.category,
-    tags: tc.tags,
-    preconditions: tc.preconditions,
-    steps: tc.steps.map((action, i) => ({ action, expected: tc.stepResults?.[i] ?? '' })),
-    dataset: tc.dataset ?? { columns: [], rows: [] },
+  blocks.push({
+    type: 'text',
+    text: prompt
+      ? `<requirement>\n${prompt}\n</requirement>`
+      : '<requirement>\nSee the attachments.\n</requirement>',
+    // A refinement resends the same attachments, so they are read from cache.
+    cache_control: { type: 'ephemeral' },
   });
+  return blocks;
+}
 
-  function instructionText(input, platform, inScope, outOfScope, existingTitles) {
-    const lines = [
-      `Platform under test: ${platform.label} (${platform.environments.join(', ')}).`,
-      TEMPLATE_RULES[input.template],
-      CATEGORY_RULE(input.categories),
-      PRIORITY_RULE(input.priorities),
-      LANGUAGE_RULE(input.language),
-      DATASET_RULE(input.datasets),
-    ];
-    if (existingTitles.length) {
-      lines.push(
-        'These test cases already exist in the repository. Do not write cases that repeat them; cover what they miss:',
-        ...existingTitles.map((t) => `- ${t}`),
-      );
-    }
+/** The fields the model needs to revise a case, without UI-only state. */
+const forModel = (tc) => ({
+  id: tc.id,
+  scenario: tc.scenario,
+  title: tc.title,
+  description: tc.description,
+  kind: tc.kind,
+  priority: tc.priority,
+  category: tc.category,
+  tags: tc.tags,
+  preconditions: tc.preconditions,
+  steps: tc.steps.map((action, i) => ({ action, expected: tc.stepResults?.[i] ?? '' })),
+  dataset: tc.dataset ?? { columns: [], rows: [] },
+});
 
-    if (!input.instruction) {
-      lines.push(
-        'Write the test suite for this requirement. Set every `ref` to an empty string, every `change` to "new", and `changeSummary` to an empty string.',
-      );
-      return lines.join('\n');
-    }
-
+function instructionText(input, platform, inScope, outOfScope, existingTitles) {
+  const lines = [
+    `Platform under test: ${platform.label} (${platform.environments.join(', ')}).`,
+    TEMPLATE_RULES[input.template],
+    CATEGORY_RULE(input.categories),
+    PRIORITY_RULE(input.priorities),
+    LANGUAGE_RULE(input.language),
+    DATASET_RULE(input.datasets),
+  ];
+  if (existingTitles.length) {
     lines.push(
-      '',
-      'You generated test cases for this requirement earlier, and the reviewer now asks for a refinement.',
-      '<current_test_cases>',
-      JSON.stringify(inScope.map(forModel), null, 1),
-      '</current_test_cases>',
+      'These test cases already exist in the repository. Do not write cases that repeat them; cover what they miss:',
+      ...existingTitles.map((t) => `- ${t}`),
     );
-    if (outOfScope.length) {
-      lines.push(
-        'These other cases are outside the refinement and will be kept as they are. Do not repeat them:',
-        ...outOfScope.map((tc) => `- ${tc.title}`),
-      );
-    }
-    if (input.history.length) {
-      lines.push('Earlier refinements, already applied:', ...input.history.map((h) => `- ${h}`));
-    }
+  }
+  if (input.rejectedTitles.length) {
     lines.push(
-      '<refinement_instruction>',
-      input.instruction,
-      '</refinement_instruction>',
-      'Return the complete revised set of the current test cases. Keep a case you leave as it is with `change` "unchanged" and its id as `ref`; revise one with `change` "edited" and its id as `ref`; add one with `change` "new" and an empty `ref`; leave a case out to remove it. Say what you changed in `changeSummary`.',
+      'The reviewer rejected these test cases. Do not write them, or close variants of them, again:',
+      ...input.rejectedTitles.map((t) => `- ${t}`),
+    );
+  }
+
+  if (!input.instruction) {
+    lines.push(
+      'Write the test suite for this requirement. Set every `ref` to an empty string, every `change` to "new", and `changeSummary` to an empty string.',
     );
     return lines.join('\n');
   }
 
-  /* ---------------- converting the model's output ---------------- */
+  lines.push(
+    '',
+    'You generated test cases for this requirement earlier, and the reviewer now asks for a refinement.',
+    '<current_test_cases>',
+    JSON.stringify(inScope.map(forModel), null, 1),
+    '</current_test_cases>',
+  );
+  if (outOfScope.length) {
+    lines.push(
+      'These other cases are outside the refinement and will be kept as they are. Do not repeat them:',
+      ...outOfScope.map((tc) => `- ${tc.title}`),
+    );
+  }
+  if (input.history.length) {
+    lines.push('Earlier refinements, already applied:', ...input.history.map((h) => `- ${h}`));
+  }
+  lines.push(
+    '<refinement_instruction>',
+    input.instruction,
+    '</refinement_instruction>',
+    'Return the complete revised set of the current test cases. Keep a case you leave as it is with `change` "unchanged" and its id as `ref`; revise one with `change` "edited" and its id as `ref`; add one with `change` "new" and an empty `ref`; leave a case out to remove it. Say what you changed in `changeSummary`.',
+  );
+  return lines.join('\n');
+}
 
-  const clip = (s, max) => {
-    const text = String(s ?? '').replace(/\s+/g, ' ').trim();
-    return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+/* ---------------- converting the model's output ---------------- */
+
+const clip = (s, max) => {
+  const text = String(s ?? '').replace(/\s+/g, ' ').trim();
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+};
+const LINE = EDIT_LIMITS.line.max;
+const newId = () => `tc-${randomUUID().slice(0, 8)}`;
+
+/** Case-insensitive match against the allowed values, else the fallback. */
+const pick = (value, allowed, fallback) =>
+  allowed.find((a) => a.toLowerCase() === String(value ?? '').trim().toLowerCase()) ?? fallback;
+
+/** BDD assertions are the Then lines and the And/But lines that follow one. */
+function thenLines(actions) {
+  const out = [];
+  let inThen = false;
+  for (const line of actions) {
+    if (/^then\b/i.test(line)) inThen = true;
+    else if (!/^(and|but)\b/i.test(line)) inThen = false;
+    if (inThen) out.push(line);
+  }
+  return out;
+}
+
+/** The model's dataset, trimmed to the schema's bounds; null when there is none. */
+function toDataset(raw) {
+  const columns = (raw?.columns ?? []).map((c) => clip(c, 40)).filter(Boolean).slice(0, DATASET_LIMITS.columns);
+  if (columns.length === 0) return null;
+  const rows = (raw.rows ?? [])
+    .slice(0, DATASET_LIMITS.rows)
+    .map((r) => columns.map((_, i) => clip(r?.[i] ?? '', DATASET_LIMITS.value)))
+    .filter((r) => r.some(Boolean));
+  return rows.length ? { columns, rows } : null;
+}
+
+/** One model case -> the app's test case shape, which every exporter files. */
+function toTestCase(raw, scenario, { input, platform, testType, id }) {
+  const steps = raw.steps
+    .map((s) => ({ action: clip(s.action, LINE), expected: clip(s.expected, LINE) }))
+    .filter((s) => s.action)
+    .slice(0, EDIT_LIMITS.steps.max);
+  const actions = steps.map((s) => s.action);
+  if (actions.length === 0) actions.push(clip(raw.title, LINE));
+
+  const bdd = input.template === 'bdd';
+  const stepResults = bdd ? [] : steps.map((s) => s.expected);
+  let expectedResults = bdd ? thenLines(actions) : stepResults.filter(Boolean);
+  if (expectedResults.length === 0) expectedResults = [clip(raw.description || raw.title, LINE)];
+
+  const kind = pick(raw.kind, KINDS, 'positive');
+  return {
+    id,
+    title: clip(raw.title, LINE),
+    description: clip(raw.description, 2000),
+    scenario: clip(scenario, 160) || null,
+    kind,
+    priority: pick(raw.priority, input.priorities, input.priorities.includes('medium') ? 'medium' : input.priorities[0]),
+    dataset: toDataset(raw.dataset),
+    category: pick(raw.category, CATEGORIES, 'Functional'),
+    tags: [...new Set(raw.tags.map((t) => clip(t, 40).toLowerCase().replace(/\s+/g, '-')).filter(Boolean))].slice(0, 10),
+    source: { name: clip(raw.source.name, 200), excerpt: clip(raw.source.excerpt, 600) },
+    platform: input.platform,
+    platformLabel: platform.label,
+    testType: input.testType,
+    testTypeLabel: testType.label,
+    variant: kind === 'positive' ? 'happy-path' : kind,
+    parameters: null,
+    preconditions: raw.preconditions.map((p) => clip(p, LINE)).filter(Boolean).slice(0, EDIT_LIMITS.list.max),
+    steps: actions,
+    stepResults: stepResults.slice(0, actions.length),
+    expectedResults: expectedResults.slice(0, EDIT_LIMITS.list.max),
+    environments: platform.environments,
+    generatedBy: 'agent',
+    change: raw.change,
   };
-  const LINE = EDIT_LIMITS.line.max;
-  const newId = () => `tc-${randomUUID().slice(0, 8)}`;
+}
 
-  /** Case-insensitive match against the allowed values, else the fallback. */
-  const pick = (value, allowed, fallback) =>
-    allowed.find((a) => a.toLowerCase() === String(value ?? '').trim().toLowerCase()) ?? fallback;
+/**
+ * Applies the model's answer. On a first run that is the whole suite. On a
+ * refinement it replaces only the in-scope cases: out-of-scope ones are kept
+ * verbatim, and an "unchanged" case keeps the reviewer's own edits rather
+ * than the model's restatement of it.
+ */
+function assemble(parsed, { input, platform, testType, inScope, outOfScope }) {
+  const byId = new Map(inScope.map((tc) => [tc.id, tc]));
+  const used = new Set();
+  const produced = [];
 
-  /** BDD assertions are the Then lines and the And/But lines that follow one. */
-  function thenLines(actions) {
-    const out = [];
-    let inThen = false;
-    for (const line of actions) {
-      if (/^then\b/i.test(line)) inThen = true;
-      else if (!/^(and|but)\b/i.test(line)) inThen = false;
-      if (inThen) out.push(line);
-    }
-    return out;
-  }
+  for (const scenario of parsed.scenarios) {
+    for (const raw of scenario.testCases) {
+      const prior = raw.ref && byId.get(raw.ref);
+      const keep = prior && !used.has(prior.id);
+      if (keep) used.add(prior.id);
 
-  /** The model's dataset, trimmed to the schema's bounds; null when there is none. */
-  function toDataset(raw) {
-    const columns = (raw?.columns ?? []).map((c) => clip(c, 40)).filter(Boolean).slice(0, DATASET_LIMITS.columns);
-    if (columns.length === 0) return null;
-    const rows = (raw.rows ?? [])
-      .slice(0, DATASET_LIMITS.rows)
-      .map((r) => columns.map((_, i) => clip(r?.[i] ?? '', DATASET_LIMITS.value)))
-      .filter((r) => r.some(Boolean));
-    return rows.length ? { columns, rows } : null;
-  }
-
-  /** One model case -> the app's test case shape, which every exporter files. */
-  function toTestCase(raw, scenario, { input, platform, testType, id }) {
-    const steps = raw.steps
-      .map((s) => ({ action: clip(s.action, LINE), expected: clip(s.expected, LINE) }))
-      .filter((s) => s.action)
-      .slice(0, EDIT_LIMITS.steps.max);
-    const actions = steps.map((s) => s.action);
-    if (actions.length === 0) actions.push(clip(raw.title, LINE));
-
-    const bdd = input.template === 'bdd';
-    const stepResults = bdd ? [] : steps.map((s) => s.expected);
-    let expectedResults = bdd ? thenLines(actions) : stepResults.filter(Boolean);
-    if (expectedResults.length === 0) expectedResults = [clip(raw.description || raw.title, LINE)];
-
-    const kind = pick(raw.kind, KINDS, 'positive');
-    return {
-      id,
-      title: clip(raw.title, LINE),
-      description: clip(raw.description, 2000),
-      scenario: clip(scenario, 160) || null,
-      kind,
-      priority: pick(raw.priority, input.priorities, input.priorities.includes('medium') ? 'medium' : input.priorities[0]),
-      dataset: toDataset(raw.dataset),
-      category: pick(raw.category, CATEGORIES, 'Functional'),
-      tags: [...new Set(raw.tags.map((t) => clip(t, 40).toLowerCase().replace(/\s+/g, '-')).filter(Boolean))].slice(0, 10),
-      source: { name: clip(raw.source.name, 200), excerpt: clip(raw.source.excerpt, 600) },
-      platform: input.platform,
-      platformLabel: platform.label,
-      testType: input.testType,
-      testTypeLabel: testType.label,
-      variant: kind === 'positive' ? 'happy-path' : kind,
-      parameters: null,
-      preconditions: raw.preconditions.map((p) => clip(p, LINE)).filter(Boolean).slice(0, EDIT_LIMITS.list.max),
-      steps: actions,
-      stepResults: stepResults.slice(0, actions.length),
-      expectedResults: expectedResults.slice(0, EDIT_LIMITS.list.max),
-      environments: platform.environments,
-      generatedBy: 'agent',
-      change: raw.change,
-    };
-  }
-
-  /**
-   * Applies the model's answer. On a first run that is the whole suite. On a
-   * refinement it replaces only the in-scope cases: out-of-scope ones are kept
-   * verbatim, and an "unchanged" case keeps the reviewer's own edits rather
-   * than the model's restatement of it.
-   */
-  function assemble(parsed, { input, platform, testType, inScope, outOfScope }) {
-    const byId = new Map(inScope.map((tc) => [tc.id, tc]));
-    const used = new Set();
-    const produced = [];
-
-    for (const scenario of parsed.scenarios) {
-      for (const raw of scenario.testCases) {
-        const prior = raw.ref && byId.get(raw.ref);
-        const keep = prior && !used.has(prior.id);
-        if (keep) used.add(prior.id);
-
-        if (keep && pick(raw.change, CHANGES, 'edited') === 'unchanged') {
-          produced.push({ ...prior, change: 'unchanged' });
-          continue;
-        }
-        const change = input.instruction ? (keep ? 'edited' : 'new') : null;
-        produced.push({
-          ...toTestCase(raw, scenario.name, { input, platform, testType, id: keep ? prior.id : newId() }),
-          change,
-        });
+      if (keep && pick(raw.change, CHANGES, 'edited') === 'unchanged') {
+        produced.push({ ...prior, change: 'unchanged' });
+        continue;
       }
+      const change = input.instruction ? (keep ? 'edited' : 'new') : null;
+      produced.push({
+        ...toTestCase(raw, scenario.name, { input, platform, testType, id: keep ? prior.id : newId() }),
+        change,
+      });
     }
-
-    const removed = inScope.filter((tc) => !used.has(tc.id)).map((tc) => tc.title);
-    const kept = outOfScope.map((tc) => ({ ...tc, change: 'unchanged' }));
-
-    // Group by scenario, in the order scenarios first appeared, so a refined
-    // case stays next to its siblings.
-    const all = [...kept, ...produced];
-    const order = [...new Set([...(input.current ?? []), ...produced].map((tc) => tc.scenario ?? ''))];
-    all.sort((a, b) => order.indexOf(a.scenario ?? '') - order.indexOf(b.scenario ?? ''));
-
-    const truncated = all.length > EDIT_LIMITS.cases.max;
-    return { testCases: all.slice(0, EDIT_LIMITS.cases.max), removed, truncated };
   }
 
-  /* ---------------- running it ---------------- */
+  const removed = inScope.filter((tc) => !used.has(tc.id)).map((tc) => tc.title);
+  const kept = outOfScope.map((tc) => ({ ...tc, change: 'unchanged' }));
 
-  let client;
-  const getClient = () =>
-    (client ??= new Anthropic({
-      apiKey: config.generator.apiKey,
-      baseURL: config.generator.baseUrl,
-      // A local model can take many minutes; retrying would only repeat that.
-      // On a CPU it reads the prompt for minutes before the first byte, past
-      // Node's default 5-minute header timeout, so that is lifted too.
-      ...(config.generator.local && {
-        timeout: 60 * 60 * 1000,
-        maxRetries: 0,
-        fetch: (url, init) => undiciFetch(url, { ...init, dispatcher: (localDispatcher ??= new Agent({ headersTimeout: 0, bodyTimeout: 0 })) }),
-      }),
-    }));
-  let localDispatcher;
+  // Group by scenario, in the order scenarios first appeared, so a refined
+  // case stays next to its siblings.
+  const all = [...kept, ...produced];
+  const order = [...new Set([...(input.current ?? []), ...produced].map((tc) => tc.scenario ?? ''))];
+  all.sort((a, b) => order.indexOf(a.scenario ?? '') - order.indexOf(b.scenario ?? ''));
 
-  /**
-   * Compatible endpoints do not enforce structured outputs, so there the suite
-   * comes back as the input of one required tool call, validated on arrival.
-   */
-  const SUBMIT_TOOL = (() => {
-    const { $schema, ...schema } = z.toJSONSchema(AgentOut);
-    return {
-      name: 'submit_test_cases',
-      description: 'Submit the complete test suite: summary, assumptions, change summary and the scenarios with their test cases.',
-      input_schema: schema,
-    };
-  })();
+  const truncated = all.length > EDIT_LIMITS.cases.max;
+  return { testCases: all.slice(0, EDIT_LIMITS.cases.max), removed, truncated };
+}
 
-  /**
-   * For a local model: the answer's shape as one compact example. Small models
-   * garble a tool call against the full schema (Ollama then returns an empty
-   * answer), but follow a JSON example written in the prompt.
-   */
-  const JSON_SHAPE = `Reply with only one JSON object, no other text, in exactly this shape:
-  {"summary":"…","assumptions":["…"],"changeSummary":"","scenarios":[{"name":"…","testCases":[{"ref":"","change":"new","title":"…","description":"…","kind":"positive|negative|edge","priority":"critical|high|medium|low","category":"${CATEGORIES.join('|')}","tags":["…"],"preconditions":["…"],"steps":[{"action":"…","expected":"…"}],"source":{"name":"Prompt","excerpt":"…"},"dataset":{"columns":[],"rows":[]}}]}]}`;
+/* ---------------- running it ---------------- */
 
-  /**
-   * Groq: one call through its OpenAI-style API, answered as a message in the
-   * shape the rest of `runAgent` reads. Strict-schema models are held to the
-   * suite's schema; others get the JSON shape in the prompt.
-   */
-  async function viaGroq(input, instruction, { advance, emit, signal }) {
-    const blocks = await compatibleBlocks(input);
-    if (blocks.some((b) => b.type === 'image')) {
-      throw new AppError(
-        `Screenshots and Figma frames need a model that reads images, and ${config.generator.model} reads text only. Remove the images, or describe the screens in the requirement.`,
-        { status: 422, code: 'validation_failed' },
-      );
-    }
-    const strict = supportsStrictSchema(config.generator.model);
-    const user = [...blocks.map((b) => b.text), instruction.text, strict ? 'Reply with the test suite as JSON.' : JSON_SHAPE].join('\n\n');
+let client;
+const getClient = () =>
+  (client ??= new Anthropic({
+    apiKey: config.generator.apiKey,
+    baseURL: config.generator.baseUrl,
+    // A local model can take many minutes; retrying would only repeat that.
+    // On a CPU it reads the prompt for minutes before the first byte, past
+    // Node's default 5-minute header timeout, so that is lifted too.
+    ...(config.generator.local && {
+      timeout: 60 * 60 * 1000,
+      maxRetries: 0,
+      fetch: (url, init) => undiciFetch(url, { ...init, dispatcher: (localDispatcher ??= new Agent({ headersTimeout: 0, bodyTimeout: 0 })) }),
+    }),
+  }));
+let localDispatcher;
 
-    advance('scan');
-    const reply = await groqChat({
-      apiKey: config.generator.groqApiKey,
-      model: config.generator.model,
-      system: SYSTEM,
-      user,
-      schema: strict ? SUBMIT_TOOL.input_schema : null,
-      maxTokens: config.agent.maxTokens,
-      signal,
-    });
-    advance('summary');
-    const drafted = (reply.text.match(/"title"\s*:/g) ?? []).length;
-    if (drafted) {
-      advance('write');
-      emit({ type: 'progress', drafted });
-    }
-    return {
-      model: reply.model,
-      stop_reason: reply.finishReason === 'length' ? 'max_tokens' : 'end_turn',
-      content: [{ type: 'text', text: reply.text }],
-      usage: reply.usage,
-    };
-  }
-
-  /** Fills what a less strict model may leave out, so a near-miss still parses. */
-  function withDefaults(raw) {
-    const kase = (c) => ({
-      ref: '',
-      change: 'new',
-      description: '',
-      kind: 'positive',
-      priority: 'medium',
-      category: 'Functional',
-      tags: [],
-      preconditions: [],
-      ...c,
-      steps: (c?.steps ?? []).map((s) => (typeof s === 'string' ? { action: s, expected: '' } : { action: '', expected: '', ...s })),
-      source: { name: 'Prompt', excerpt: '', ...(c?.source ?? {}) },
-      dataset: { columns: [], rows: [], ...(c?.dataset ?? {}) },
-    });
-    return {
-      summary: '',
-      assumptions: [],
-      changeSummary: '',
-      ...raw,
-      scenarios: (raw?.scenarios ?? []).map((s) => ({ name: '', ...s, testCases: (s?.testCases ?? []).map(kase) })),
-    };
-  }
-
-  /** The suite from a compatible endpoint's answer: the tool call, or JSON in the text as a fallback. */
-  function parseCompatible(message) {
-    let raw = message.content.find((b) => b.type === 'tool_use' && b.name === SUBMIT_TOOL.name)?.input;
-    if (!raw) {
-      const text = message.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
-      try {
-        raw = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1));
-      } catch {
-        return null;
-      }
-    }
-    if (typeof raw === 'string') {
-      try {
-        raw = JSON.parse(raw);
-      } catch {
-        return null;
-      }
-    }
-    const parsed = AgentOut.safeParse(withDefaults(raw));
-    return parsed.success ? parsed.data : null;
-  }
-
-  /** Swaps in a stand-in client, so tests run the agent without a network call. */
-  export const setAgentClient = (stub) => {
-    client = stub;
+/**
+ * Compatible endpoints do not enforce structured outputs, so there the suite
+ * comes back as the input of one required tool call, validated on arrival.
+ */
+const SUBMIT_TOOL = (() => {
+  const { $schema, ...schema } = z.toJSONSchema(AgentOut);
+  return {
+    name: 'submit_test_cases',
+    description: 'Submit the complete test suite: summary, assumptions, change summary and the scenarios with their test cases.',
+    input_schema: schema,
   };
+})();
 
-  /** SDK errors -> errors that are safe to show and say what to do. */
-  function translate(err) {
-    if (err instanceof AppError) return err;
-    if (err instanceof Anthropic.APIUserAbortError) {
-      return new AppError('Generation was cancelled.', { status: 499, code: 'agent_cancelled' });
-    }
-    if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError) {
-      return new AppError(`The ${config.generator.provider === 'compatible' ? 'AI provider' : 'Anthropic API'} rejected the key. Check ANTHROPIC_API_KEY on the server.`, {
-        status: 503,
-        code: 'agent_unavailable',
-        details: err.message,
-      });
-    }
-    if (err instanceof Anthropic.APIError && err.status === 402) {
-      return new AppError('The AI provider account has no credit left. Top up its balance, then try again.', {
-        status: 402,
-        code: 'agent_no_credit',
-        details: err.message,
-      });
-    }
-    if (err instanceof Anthropic.RateLimitError) {
-      return new AppError('The AI service is busy. Wait a moment and try again.', { status: 429, code: 'agent_busy' });
-    }
-    if (err instanceof Anthropic.BadRequestError) {
-      return new AppError('The AI service could not read this request. Check that the attachments open correctly.', {
-        status: 422,
-        code: 'agent_rejected',
-        details: err.message,
-      });
-    }
-    if (err instanceof Anthropic.APIError) {
-      return new AppError('The AI service is unavailable. Please try again.', { status: 502, code: 'agent_failed', details: err.message });
-    }
-    return new AppError('Test case generation failed. Please try again.', { status: 502, code: 'agent_failed', details: String(err) });
+/**
+ * For a local model: the answer's shape as one compact example. Small models
+ * garble a tool call against the full schema (Ollama then returns an empty
+ * answer), but follow a JSON example written in the prompt.
+ */
+const JSON_SHAPE = `Reply with only one JSON object, no other text, in exactly this shape:
+{"summary":"…","assumptions":["…"],"gaps":["…"],"changeSummary":"","scenarios":[{"name":"…","testCases":[{"ref":"","change":"new","title":"…","description":"…","kind":"positive|negative|edge","priority":"critical|high|medium|low","category":"${CATEGORIES.join('|')}","tags":["…"],"preconditions":["…"],"steps":[{"action":"…","expected":"…"}],"source":{"name":"Prompt","excerpt":"…"},"dataset":{"columns":[],"rows":[]}}]}]}`;
+
+/**
+ * Groq: one call through its OpenAI-style API, answered as a message in the
+ * shape the rest of `runAgent` reads. Strict-schema models are held to the
+ * suite's schema; others get the JSON shape in the prompt.
+ */
+async function viaGroq(input, instruction, { advance, emit, signal }) {
+  const all = await compatibleBlocks(input);
+  // Text-only models: screenshots are left out when there is text to work
+  // from (a Figma import brings its structure as text too), and refused only
+  // when they are all there is.
+  const images = all.filter((b) => b.type === 'image').length;
+  const blocks = all.filter((b, i) => b.type !== 'image' && !(all[i + 1]?.type === 'image' && /^Attachment: /.test(b.text)));
+  if (images && !input.prompt && !blocks.some((b) => /^<document /.test(b.text))) {
+    throw new AppError(
+      `Screenshots need a model that reads images, and ${config.generator.model} reads text only. Add a written requirement, or describe the screens.`,
+      { status: 422, code: 'validation_failed' },
+    );
   }
+  if (images) {
+    emit({ type: 'notice', message: `${images} ${images === 1 ? 'image was' : 'images were'} skipped: ${config.generator.model} reads text only.` });
+  }
+  const base = [...blocks.map((b) => b.text), instruction.text];
+  const toMessage = (reply) => ({
+    model: reply.model,
+    stop_reason: reply.finishReason === 'length' ? 'max_tokens' : 'end_turn',
+    content: [{ type: 'text', text: reply.text }],
+    usage: reply.usage,
+  });
+  const request = { apiKey: config.generator.groqApiKey, model: config.generator.model, system: SYSTEM, maxTokens: config.agent.maxTokens, signal };
 
-  /**
-   * Runs one generation or refinement. `emit` receives progress as it happens
-   * -- the three stages, then a running count of drafted cases -- so the UI
-   * can show what the agent is doing during a call that can take a minute.
-   *
-   * @param {object} input  validated against `agentRequestSchema`
-   * @param {(event: object) => void} emit
-   * @param {AbortSignal} [signal]  aborted when the browser goes away
-   */
-  export async function runAgent(input, emit, signal) {
-    const platform = generationConfig.platforms[input.platform];
-    const testType = generationConfig.testTypes[input.testType];
+  // Streamed first, so the reasoning shows live and drafted cases count up.
+  advance('scan');
+  let drafted = 0;
+  const streamed = await groqStream({
+    ...request,
+    user: [...base, JSON_SHAPE].join('\n\n'),
+    onReasoning: (t) => emit({ type: 'reasoning', text: t }),
+    onContent: (_piece, sofar) => {
+      if (!drafted) advance('summary');
+      const count = (sofar.match(/"title"\s*:/g) ?? []).length;
+      if (count > drafted) {
+        drafted = count;
+        advance('write');
+        emit({ type: 'progress', drafted });
+      }
+    },
+  });
+  const message = toMessage(streamed);
+  if (message.stop_reason === 'max_tokens' || parseCompatible(message) || !supportsStrictSchema(config.generator.model)) return message;
 
-    const current = input.current ?? [];
-    const scoped = input.instruction && input.selectedIds.length > 0;
-    const inScope = scoped ? current.filter((tc) => input.selectedIds.includes(tc.id)) : current;
-    const outOfScope = scoped ? current.filter((tc) => !input.selectedIds.includes(tc.id)) : [];
-    if (input.instruction && inScope.length === 0) {
-      throw new AppError('None of the selected cases exist any more. Reselect and try again.', { status: 422, code: 'validation_failed' });
-    }
+  // The streamed JSON did not parse: ask again with the schema enforced.
+  logger.warn({ sample: streamed.text.slice(0, 500) }, 'streamed answer did not parse; retrying with a strict schema');
+  return toMessage(
+    await groqChat({ ...request, user: [...base, 'Reply with the test suite as JSON.'].join('\n\n'), schema: SUBMIT_TOOL.input_schema }),
+  );
+}
 
-    emit({ type: 'stage', stage: 'analyze' });
+/** Fills what a less strict model may leave out, so a near-miss still parses. */
+function withDefaults(raw) {
+  const kase = (c) => ({
+    ref: '',
+    change: 'new',
+    description: '',
+    kind: 'positive',
+    priority: 'medium',
+    category: 'Functional',
+    tags: [],
+    preconditions: [],
+    ...c,
+    steps: (c?.steps ?? []).map((s) => (typeof s === 'string' ? { action: s, expected: '' } : { action: '', expected: '', ...s })),
+    source: { name: 'Prompt', excerpt: '', ...(c?.source ?? {}) },
+    dataset: { columns: [], rows: [], ...(c?.dataset ?? {}) },
+  });
+  return {
+    summary: '',
+    assumptions: [],
+    gaps: [],
+    changeSummary: '',
+    ...raw,
+    scenarios: (raw?.scenarios ?? []).map((s) => ({ name: '', ...s, testCases: (s?.testCases ?? []).map(kase) })),
+  };
+}
 
-    // "Additional context": cases already saved in the chosen folders.
-    const existingTitles = input.contextFolderIds.length ? await titlesIn(input.contextFolderIds) : [];
-
-    let drafted = 0;
-    let text = '';
-    let stage = 'analyze';
-    const advance = (next) => {
-      if (next === stage) return;
-      stage = next;
-      emit({ type: 'stage', stage });
-    };
-
-    const compatible = config.generator.provider === 'compatible';
-    const groq = config.generator.provider === 'groq';
-
+/** The suite from a compatible endpoint's answer: the tool call, or JSON in the text as a fallback. */
+function parseCompatible(message) {
+  let raw = message.content.find((b) => b.type === 'tool_use' && b.name === SUBMIT_TOOL.name)?.input;
+  if (!raw) {
+    const text = message.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
     try {
-      const instruction = { type: 'text', text: instructionText(input, platform, inScope, outOfScope, existingTitles) };
-      let message;
-      if (groq) {
-        message = await viaGroq(input, instruction, { advance, emit, signal });
-      } else {
+      raw = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1));
+    } catch {
+      return null;
+    }
+  }
+  if (typeof raw === 'string') {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  const parsed = AgentOut.safeParse(withDefaults(raw));
+  return parsed.success ? parsed.data : null;
+}
+
+/** Swaps in a stand-in client, so tests run the agent without a network call. */
+export const setAgentClient = (stub) => {
+  client = stub;
+};
+
+/** SDK errors -> errors that are safe to show and say what to do. */
+function translate(err) {
+  if (err instanceof AppError) return err;
+  if (err instanceof Anthropic.APIUserAbortError) {
+    return new AppError('Generation was cancelled.', { status: 499, code: 'agent_cancelled' });
+  }
+  if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError) {
+    return new AppError(`The ${config.generator.provider === 'compatible' ? 'AI provider' : 'Anthropic API'} rejected the key. Check ANTHROPIC_API_KEY on the server.`, {
+      status: 503,
+      code: 'agent_unavailable',
+      details: err.message,
+    });
+  }
+  if (err instanceof Anthropic.APIError && err.status === 402) {
+    return new AppError('The AI provider account has no credit left. Top up its balance, then try again.', {
+      status: 402,
+      code: 'agent_no_credit',
+      details: err.message,
+    });
+  }
+  if (err instanceof Anthropic.RateLimitError) {
+    return new AppError('The AI service is busy. Wait a moment and try again.', { status: 429, code: 'agent_busy' });
+  }
+  if (err instanceof Anthropic.BadRequestError) {
+    return new AppError('The AI service could not read this request. Check that the attachments open correctly.', {
+      status: 422,
+      code: 'agent_rejected',
+      details: err.message,
+    });
+  }
+  if (err instanceof Anthropic.APIError) {
+    return new AppError('The AI service is unavailable. Please try again.', { status: 502, code: 'agent_failed', details: err.message });
+  }
+  return new AppError('Test case generation failed. Please try again.', { status: 502, code: 'agent_failed', details: String(err) });
+}
+
+/**
+ * Runs one generation or refinement. `emit` receives progress as it happens
+ * -- the three stages, then a running count of drafted cases -- so the UI
+ * can show what the agent is doing during a call that can take a minute.
+ *
+ * @param {object} input  validated against `agentRequestSchema`
+ * @param {(event: object) => void} emit
+ * @param {AbortSignal} [signal]  aborted when the browser goes away
+ */
+export async function runAgent(input, emit, signal) {
+  const platform = generationConfig.platforms[input.platform];
+  const testType = generationConfig.testTypes[input.testType];
+
+  const current = input.current ?? [];
+  // Accepted cases are settled: a refinement keeps them exactly as they are.
+  const locked = new Set(input.lockedIds);
+  const editable = current.filter((tc) => !locked.has(tc.id));
+  const scoped = input.instruction && input.selectedIds.length > 0;
+  const inScope = scoped ? editable.filter((tc) => input.selectedIds.includes(tc.id)) : editable;
+  const outOfScope = current.filter((tc) => !inScope.includes(tc));
+  if (input.instruction && inScope.length === 0) {
+    throw new AppError(
+      locked.size ? 'Every case in scope is accepted. Select cases that are not accepted, or undo an acceptance.' : 'None of the selected cases exist any more. Reselect and try again.',
+      { status: 422, code: 'validation_failed' },
+    );
+  }
+
+  emit({ type: 'stage', stage: 'analyze' });
+
+  // Additional context: every saved case in the chosen folders, plus -- when
+  // scanning -- the saved cases most related to this requirement.
+  const folderTitles = input.contextFolderIds.length ? await titlesIn(input.contextFolderIds) : [];
+  const scan = input.scanRepository
+    ? await relatedCases([input.prompt, ...input.files.map((f) => f.name.replace(/\.[a-z0-9]+$/i, ''))].join(' '))
+    : { scanned: 0, related: [] };
+  const existingTitles = [...new Set([...folderTitles, ...scan.related])].slice(0, 200);
+  emit({
+    type: 'context',
+    scanned: scan.scanned,
+    related: scan.related.length,
+    folders: input.contextFolderIds.length,
+    examples: existingTitles.slice(0, 5),
+  });
+
+  let drafted = 0;
+  let text = '';
+  let stage = 'analyze';
+  const advance = (next) => {
+    if (next === stage) return;
+    stage = next;
+    emit({ type: 'stage', stage });
+  };
+
+  const compatible = config.generator.provider === 'compatible';
+  const groq = config.generator.provider === 'groq';
+
+  try {
+    const instruction = { type: 'text', text: instructionText(input, platform, inScope, outOfScope, existingTitles) };
+    let message;
+    if (groq) {
+      message = await viaGroq(input, instruction, { advance, emit, signal });
+    } else {
       const stream = compatible
         ? getClient().messages.stream(
             {
@@ -635,7 +681,9 @@ async function requirementBlocks({ files, prompt }) {
               model: config.generator.model,
               max_tokens: config.agent.maxTokens,
               system: SYSTEM,
-              output_config: { effort: config.agent.effort, format: betaZodOutputFormat(AgentOut) },
+              // "summarized" returns a readable summary of the reasoning, shown live.
+            thinking: { type: 'adaptive', display: 'summarized' },
+            output_config: { effort: config.agent.effort, format: betaZodOutputFormat(AgentOut) },
               // On a policy decline the API reruns the request on a fallback model.
               betas: ['server-side-fallback-2026-07-01'],
               fallbacks: 'default',
@@ -650,6 +698,9 @@ async function requirementBlocks({ files, prompt }) {
         } else if (event.type === 'content_block_start') {
           if (event.content_block.type === 'thinking') advance('scan');
           if (event.content_block.type === 'text' || event.content_block.type === 'tool_use') advance('summary');
+        } else if (event.type === 'content_block_delta' && event.delta.type === 'thinking_delta') {
+          // Live reasoning: the model's analysis as it happens.
+          if (event.delta.thinking) emit({ type: 'reasoning', text: event.delta.thinking });
         } else if (event.type === 'content_block_delta' && (event.delta.type === 'text_delta' || event.delta.type === 'input_json_delta')) {
           text += event.delta.type === 'text_delta' ? event.delta.text : event.delta.partial_json;
           // The summary is the first field, so the first case marks the switch
@@ -712,6 +763,7 @@ async function requirementBlocks({ files, prompt }) {
     return {
       summary: parsed.summary,
       assumptions: parsed.assumptions,
+      gaps: parsed.gaps ?? [],
       changeSummary: input.instruction ? parsed.changeSummary : '',
       ...result,
     };

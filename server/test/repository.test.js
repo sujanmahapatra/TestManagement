@@ -89,6 +89,22 @@ test('the last top-level folder cannot be deleted, and unknown folders are refus
   await assert.rejects(repo.addCases({ folderId: 'f_missing', subfolders: false, testCases: [CASE] }), /no longer exists/);
 });
 
+test('scanning the repository finds the saved cases related to a requirement', async () => {
+  const { folders } = await repo.getRepository();
+  await repo.addCases({
+    folderId: folders[0].id,
+    subfolders: false,
+    testCases: [
+      { ...CASE, title: 'Delete a sent message for everyone', description: 'Long press a message and delete it', scenario: 'Delete message' },
+      { ...CASE, title: 'Change the profile photo', description: 'Upload a new avatar', scenario: 'Profile' },
+    ],
+  });
+  const { scanned, related } = await repo.relatedCases('Users can delete messages they have sent, for everyone or only for themselves.');
+  assert.ok(scanned >= 2);
+  assert.ok(related.includes('Delete a sent message for everyone'));
+  assert.ok(!related.includes('Change the profile photo'));
+});
+
 test('saved titles are available to the agent as context', async () => {
   const { folders } = await repo.getRepository();
   await repo.addCases({ folderId: folders[0].id, subfolders: true, testCases: [{ ...CASE, title: 'Lockout', scenario: 'Lockout' }] });

@@ -67,6 +67,84 @@ function toError(status, body) {
 }
 
 /**
+ * Streams a reply, passing the model's reasoning and answer along as they
+ * arrive. No JSON mode -- Groq does not stream it -- so the caller asks for
+ * JSON in the prompt and parses the text.
+ *
+ * @returns {Promise<{ text: string, finishReason: string, model: string, usage: object }>}
+ */
+export async function groqStream({ apiKey, model, system, user, maxTokens, signal, onReasoning, onContent }) {
+  const body = {
+    model,
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: user },
+    ],
+    max_completion_tokens: maxTokens,
+    temperature: 0.3,
+    stream: true,
+    ...(/^openai\/gpt-oss/.test(model) && { reasoning_effort: 'low', include_reasoning: true }),
+  };
+
+  let res;
+  try {
+    res = await fetch(ENDPOINT, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(TIMEOUT_MS)]) : AbortSignal.timeout(TIMEOUT_MS),
+    });
+  } catch (err) {
+    if (signal?.aborted) throw new AppError('Generation was cancelled.', { status: 499, code: 'agent_cancelled' });
+    throw new AppError('Could not reach Groq. Check the internet connection.', { status: 504, code: 'agent_failed', details: err.message });
+  }
+  if (!res.ok) throw toError(res.status, await res.text());
+
+  let text = '';
+  let finishReason = null;
+  let usage = {};
+  let modelName = model;
+  let buffer = '';
+  const decoder = new TextDecoder();
+
+  const handle = (line) => {
+    if (!line.startsWith('data:')) return;
+    const data = line.slice(5).trim();
+    if (!data || data === '[DONE]') return;
+    const chunk = JSON.parse(data);
+    if (chunk.error) throw toError(500, JSON.stringify(chunk));
+    modelName = chunk.model ?? modelName;
+    const choice = chunk.choices?.[0];
+    const delta = choice?.delta ?? {};
+    const reasoning = delta.reasoning ?? delta.reasoning_content;
+    if (reasoning) onReasoning?.(reasoning);
+    if (delta.content) {
+      text += delta.content;
+      onContent?.(delta.content, text);
+    }
+    if (choice?.finish_reason) finishReason = choice.finish_reason;
+    const u = chunk.x_groq?.usage ?? chunk.usage;
+    if (u) usage = { input_tokens: u.prompt_tokens, output_tokens: u.completion_tokens };
+  };
+
+  try {
+    for await (const piece of res.body) {
+      buffer += decoder.decode(piece, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      lines.forEach(handle);
+    }
+    handle(buffer);
+  } catch (err) {
+    if (err instanceof AppError) throw err;
+    if (signal?.aborted) throw new AppError('Generation was cancelled.', { status: 499, code: 'agent_cancelled' });
+    throw new AppError('The connection to Groq dropped. Please try again.', { status: 502, code: 'agent_failed', details: err.message });
+  }
+
+  return { text, finishReason, model: modelName, usage };
+}
+
+/**
  * @returns {Promise<{ text: string, finishReason: string, model: string, usage: object }>}
  */
 export async function groqChat({ apiKey, model, system, user, schema, maxTokens, signal }) {

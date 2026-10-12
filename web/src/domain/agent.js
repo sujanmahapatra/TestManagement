@@ -139,6 +139,7 @@ export const AGENT_STAGES = [
 
 /** Starting points for a refinement; `<…>` marks the part to fill in. */
 export const REFINE_SUGGESTIONS = [
+  'Organize test cases into flow-based scenarios, with all non-functional tests in one dedicated scenario.',
   'Add edge and negative test cases for <feature>.',
   'Remove all negative test cases. Keep only happy path and boundary.',
   'Group test cases by feature name. Create one scenario per feature.',

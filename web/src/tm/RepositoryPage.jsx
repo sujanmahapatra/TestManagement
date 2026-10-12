@@ -93,7 +93,7 @@ function FolderTree({ repo, selectedId, onSelect, onMenu }) {
             <Box component="span" sx={{ flex: 1, minWidth: 0, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {f.name}
             </Box>
-            <Box component="span" sx={{ fontSize: 12, color: 'var(--tm-faint)', fontVariantNumeric: 'tabular-nums' }}>{repo.counts[f.id] ?? 0}</Box>
+            <Box component="span" sx={{ fontSize: 12, color: 'var(--tm-faint)', fontVariantNumeric: 'tabular-nums' }}>{repo.cases.filter((c) => c.folderId === f.id).length}({repo.counts[f.id] ?? 0})</Box>
             <IconButton
               className="tm-more"
               size="small"
@@ -115,21 +115,99 @@ function FolderTree({ repo, selectedId, onSelect, onMenu }) {
   return <Box sx={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>{render(null, 0)}</Box>;
 }
 
-/** The AI entry point: a gradient-ringed button, as AI actions are marked. */
+/** The AI entry point: the page's primary action, marked with the sparkle. */
 export function GenerateButton({ onClick, badge }) {
   return (
-    <Box sx={{ p: '1.5px', borderRadius: '8px', background: AI_GRADIENT, display: 'inline-flex' }}>
-      <Button
-        onClick={onClick}
-        startIcon={<SparkleIcon size={17} sx={{ color: 'var(--tm-ai)' }} />}
-        sx={{ bgcolor: '#fff', color: 'var(--tm-ink)', borderRadius: '6.5px', fontWeight: 600, px: 1.75, '&:hover': { bgcolor: 'var(--tm-ai-soft)' } }}
+    <Button variant="contained" onClick={onClick} startIcon={<SparkleIcon size={16} />} sx={{ fontWeight: 600, px: 1.75 }}>
+      Generate with AI
+      {badge && (
+        <Box component="span" sx={{ ml: 1, fontSize: 11.5, fontWeight: 600, color: '#fff', background: AI_GRADIENT, px: '7px', py: '1px', borderRadius: '10px' }}>
+          {badge}
+        </Box>
+      )}
+    </Button>
+  );
+}
+
+/** A new, empty case for "Create Test Case" and the quick-create bar. */
+export function blankCase(options, title = '') {
+  const web = options.platforms.find((p) => p.key === 'web') ?? options.platforms[0];
+  return {
+    title,
+    description: '',
+    priority: 'medium',
+    category: 'Functional',
+    scenario: null,
+    tags: [],
+    preconditions: [],
+    steps: [''],
+    stepResults: [''],
+    expectedResults: [],
+    environments: [],
+    platform: web?.key ?? 'web',
+    platformLabel: web?.label ?? 'Web',
+    testType: 'regression',
+    testTypeLabel: 'Regression',
+    variant: 'happy-path',
+    parameters: null,
+    dataset: null,
+    kind: 'positive',
+  };
+}
+
+/**
+ * The bar under the list: type a title and press Enter. With "AI steps" on,
+ * the agent writes the steps, preconditions and expected results; off, the
+ * case opens for writing by hand.
+ */
+function QuickCreate({ busy, aiEnabled, onCreate }) {
+  const [title, setTitle] = useState('');
+  const [ai, setAi] = useState(true);
+  const submit = async (e) => {
+    e.preventDefault();
+    if (title.trim().length < 5) return;
+    if (await onCreate(title.trim(), ai && aiEnabled)) setTitle('');
+  };
+  return (
+    <Box component="form" onSubmit={submit} sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 1, borderTop: '1px solid var(--tm-rule)', bgcolor: '#fafbfc' }}>
+      <Box
+        component="button"
+        type="button"
+        onClick={() => setAi((v) => !v)}
+        aria-pressed={ai && aiEnabled}
+        disabled={!aiEnabled}
+        title={aiEnabled ? 'Let AI write the steps' : 'AI is off on this server'}
+        sx={{
+          all: 'unset',
+          cursor: aiEnabled ? 'pointer' : 'not-allowed',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 0.5,
+          fontSize: 12.5,
+          fontWeight: 500,
+          px: 1,
+          py: '4px',
+          borderRadius: '6px',
+          border: '1px solid',
+          borderColor: ai && aiEnabled ? '#ddd6fe' : 'var(--tm-rule-strong)',
+          bgcolor: ai && aiEnabled ? 'var(--tm-ai-soft)' : 'var(--tm-surface)',
+          color: ai && aiEnabled ? 'var(--tm-ai)' : 'var(--tm-muted)',
+          '&:focus-visible': { outline: '2px solid var(--tm-primary)' },
+        }}
       >
-        Generate with AI
-        {badge && (
-          <Box component="span" sx={{ ml: 1, fontSize: 11.5, fontWeight: 600, color: '#fff', background: AI_GRADIENT, px: '7px', py: '1px', borderRadius: '10px' }}>
-            {badge}
-          </Box>
-        )}
+        <SparkleIcon size={13} /> AI steps
+      </Box>
+      <OutlinedInput
+        size="small"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        placeholder={ai && aiEnabled ? 'Enter test case title and press ↵ to generate test case details using AI' : 'Enter test case title and press ↵ to create it'}
+        disabled={busy}
+        fullWidth
+        inputProps={{ maxLength: 600, 'aria-label': 'New test case title' }}
+      />
+      <Button type="submit" variant="text" disabled={busy || title.trim().length < 5} startIcon={busy ? null : <PlusIcon size={15} />} sx={{ flex: 'none' }}>
+        {busy ? 'Creating…' : 'Create'}
       </Button>
     </Box>
   );
@@ -140,7 +218,7 @@ export function GenerateButton({ onClick, badge }) {
  * sub-folders), and actions on a selection -- export to a tracker, move,
  * delete. Opening a case shows it in the side panel for editing.
  */
-export default function RepositoryPage({ repo, options, folderId, onFolderChange, onGenerate, generateBadge, onExport, notify }) {
+export default function RepositoryPage({ repo, options, folderId, onFolderChange, onGenerate, generateBadge, onExport, onQuickGenerate, notify }) {
   const [search, setSearch] = useState('');
   const [priority, setPriority] = useState('all');
   const [category, setCategory] = useState('all');
@@ -151,6 +229,10 @@ export default function RepositoryPage({ repo, options, folderId, onFolderChange
   const [nameDialog, setNameDialog] = useState(null);
   const [exportAnchor, setExportAnchor] = useState(null);
   const [moveAnchor, setMoveAnchor] = useState(null);
+  const [moveIds, setMoveIds] = useState(null); // ids the Move menu acts on
+  const [rowMenu, setRowMenu] = useState(null); // { anchor, testCase }
+  const [creating, setCreating] = useState(null); // a blank case being written by hand
+  const [quickBusy, setQuickBusy] = useState(false);
 
   const folder = repo.folders.find((f) => f.id === folderId) ?? repo.folders[0];
   const scope = folder ? repo.descendants[folder.id] : new Set();
@@ -242,22 +324,42 @@ export default function RepositoryPage({ repo, options, folderId, onFolderChange
 
       {/* cases */}
       <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', px: 3, pt: 2.5, pb: 2 }}>
-          <Box sx={{ minWidth: 0 }}>
-            <Box sx={{ fontSize: 12.5, color: 'var(--tm-muted)' }}>{folder ? repo.pathOf(folder.id).split(' / ').slice(0, -1).join(' / ') || 'Repository' : 'Repository'}</Box>
-            <Box component="h1" sx={{ m: 0, fontSize: 22, fontWeight: 600, color: 'var(--tm-ink)', letterSpacing: '-.01em' }}>{folder?.name ?? 'Test cases'}</Box>
+        <Box sx={{ px: 3, pt: 2.5, borderBottom: '1px solid var(--tm-rule)', bgcolor: 'var(--tm-surface)' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+            <Box component="h1" sx={{ m: 0, fontSize: 22, fontWeight: 600, color: 'var(--tm-ink)', letterSpacing: '-.01em' }}>Test Cases</Box>
+            <Box sx={{ ml: 'auto', display: 'flex', gap: 1, alignItems: 'center' }}>
+              <IconButton
+                aria-label="Export test cases"
+                title={chosen.length ? `Export ${chosen.length} selected` : 'Export this folder'}
+                onClick={(e) => setExportAnchor(e.currentTarget)}
+                disabled={rows.length === 0}
+                sx={{ border: '1px solid var(--tm-rule-strong)', borderRadius: '6px', p: '7px', color: 'var(--tm-ink-soft)' }}
+              >
+                <ExportIcon size={17} />
+              </IconButton>
+              <Button variant="outlined" onClick={() => setCreating(blankCase(options))} disabled={!folder}>
+                Create Test Case
+              </Button>
+              <GenerateButton onClick={onGenerate} badge={generateBadge} />
+            </Box>
           </Box>
-          <Box sx={{ ml: 'auto', display: 'flex', gap: 1 }}>
-            <GenerateButton onClick={onGenerate} badge={generateBadge} />
+          <Box role="tablist" aria-label="Test case views" sx={{ display: 'flex', gap: 2.5, mt: 1.5 }}>
+            <Box
+              role="tab"
+              aria-selected="true"
+              sx={{ pb: 1.25, fontSize: 14, fontWeight: 500, color: 'var(--tm-primary)', borderBottom: '2px solid var(--tm-primary)' }}
+            >
+              Repository
+            </Box>
           </Box>
         </Box>
 
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', px: 3, pb: 1.5 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', px: 3, pt: 2, pb: 1.5 }}>
           <OutlinedInput
             size="small"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by title or ID"
+            placeholder="Search by Test Case ID or Title"
             startAdornment={<InputAdornment position="start"><SearchIcon size={16} sx={{ color: 'var(--tm-faint)' }} /></InputAdornment>}
             sx={{ width: { xs: '100%', sm: 260 } }}
             inputProps={{ 'aria-label': 'Search test cases' }}
@@ -272,7 +374,14 @@ export default function RepositoryPage({ repo, options, folderId, onFolderChange
               <Button variant="outlined" startIcon={<ExportIcon size={16} />} endIcon={<ChevronDown size={14} />} onClick={(e) => setExportAnchor(e.currentTarget)}>
                 Export
               </Button>
-              <Button variant="outlined" endIcon={<ChevronDown size={14} />} onClick={(e) => setMoveAnchor(e.currentTarget)}>
+              <Button
+                variant="outlined"
+                endIcon={<ChevronDown size={14} />}
+                onClick={(e) => {
+                  setMoveIds(chosen.map((c) => c.id));
+                  setMoveAnchor(e.currentTarget);
+                }}
+              >
                 Move
               </Button>
               <IconButton aria-label="Delete selected" onClick={removeChosen} sx={{ color: 'var(--tm-bad)', border: '1px solid var(--tm-rule-strong)', borderRadius: '6px', p: '7px' }}>
@@ -282,7 +391,13 @@ export default function RepositoryPage({ repo, options, folderId, onFolderChange
           )}
         </Box>
 
-        <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', mx: 3, mb: 3, border: '1px solid var(--tm-rule)', borderRadius: '10px', bgcolor: 'var(--tm-surface)' }}>
+        <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', mx: 3, mb: 3, border: '1px solid var(--tm-rule)', borderRadius: '10px', bgcolor: 'var(--tm-surface)', overflow: 'hidden' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1.25, borderBottom: '1px solid var(--tm-rule)' }}>
+            <FolderIcon open size={17} sx={{ color: 'var(--tm-primary)' }} />
+            <Box sx={{ fontSize: 14.5, fontWeight: 600, color: 'var(--tm-ink)' }}>{folder?.name ?? 'Test cases'}</Box>
+            {folder && <Box sx={{ fontSize: 12.5, color: 'var(--tm-muted)' }}>{repo.pathOf(folder.id)} · {rows.length} {rows.length === 1 ? 'test case' : 'test cases'}</Box>}
+          </Box>
+          <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
           {rows.length > 0 ? (
             <Box component="table" sx={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0 }}>
               <thead>
@@ -296,6 +411,7 @@ export default function RepositoryPage({ repo, options, folderId, onFolderChange
                   <Box component="th" sx={{ ...th, width: 130, display: { xs: 'none', lg: 'table-cell' } }}>Type</Box>
                   <Box component="th" sx={{ ...th, width: 180, display: { xs: 'none', lg: 'table-cell' } }}>Folder</Box>
                   <Box component="th" sx={{ ...th, width: 120, display: { xs: 'none', md: 'table-cell' } }}>Updated</Box>
+                  <Box component="th" sx={{ ...th, width: 44 }} aria-label="Actions" />
                 </tr>
               </thead>
               <tbody>
@@ -321,6 +437,11 @@ export default function RepositoryPage({ repo, options, folderId, onFolderChange
                       {repo.folders.find((f) => f.id === c.folderId)?.name}
                     </Box>
                     <Box component="td" sx={{ ...td, display: { xs: 'none', md: 'table-cell' }, color: 'var(--tm-muted)', whiteSpace: 'nowrap' }}>{formatDate(c.updatedAt)}</Box>
+                    <Box component="td" sx={{ ...td, px: 0.5 }} onClick={(e) => e.stopPropagation()}>
+                      <IconButton size="small" aria-label={`Actions for ${c.key}`} onClick={(e) => setRowMenu({ anchor: e.currentTarget, testCase: c })} sx={{ color: 'var(--tm-muted)' }}>
+                        <MoreIcon size={16} sx={{ transform: 'rotate(90deg)' }} />
+                      </IconButton>
+                    </Box>
                   </Box>
                 ))}
               </tbody>
@@ -344,6 +465,23 @@ export default function RepositoryPage({ repo, options, folderId, onFolderChange
               {repo.loadError && <Box sx={{ color: 'var(--tm-bad)', fontSize: 14 }}>Could not load the repository: {repo.loadError}</Box>}
             </Box>
           )}
+          </Box>
+          {folder && (
+            <QuickCreate
+              busy={quickBusy}
+              aiEnabled={options.agent.enabled}
+              onCreate={async (title, ai) => {
+                if (!ai) {
+                  setCreating(blankCase(options, title));
+                  return true;
+                }
+                setQuickBusy(true);
+                const ok = await onQuickGenerate(title, folder.id);
+                setQuickBusy(false);
+                return ok;
+              }}
+            />
+          )}
         </Box>
       </Box>
 
@@ -359,7 +497,7 @@ export default function RepositoryPage({ repo, options, folderId, onFolderChange
             key={d.key}
             onClick={async () => {
               setExportAnchor(null);
-              if (await onExport(d.key, chosen)) setChecked(new Set());
+              if (await onExport(d.key, chosen.length ? chosen : rows)) setChecked(new Set());
             }}
           >
             <Box>
@@ -377,7 +515,7 @@ export default function RepositoryPage({ repo, options, folderId, onFolderChange
             key={f.id}
             onClick={async () => {
               setMoveAnchor(null);
-              const result = await repo.moveCases(chosen.map((c) => c.id), f.id);
+              const result = await repo.moveCases(moveIds ?? chosen.map((c) => c.id), f.id);
               if (result) {
                 setChecked(new Set());
                 notify({ kind: 'success', message: `Moved ${result.moved} test cases to ${repo.pathOf(f.id)}.` });
@@ -389,6 +527,55 @@ export default function RepositoryPage({ repo, options, folderId, onFolderChange
           </MenuItem>
         ))}
       </Menu>
+
+      <Menu anchorEl={rowMenu?.anchor} open={Boolean(rowMenu)} onClose={() => setRowMenu(null)} disableScrollLock>
+        <MenuItem
+          onClick={() => {
+            setViewing(rowMenu.testCase);
+            setRowMenu(null);
+          }}
+        >
+          Edit
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            setMoveIds([rowMenu.testCase.id]);
+            setMoveAnchor(rowMenu.anchor);
+            setRowMenu(null);
+          }}
+        >
+          Move to…
+        </MenuItem>
+        <MenuItem
+          onClick={async () => {
+            const tc = rowMenu.testCase;
+            setRowMenu(null);
+            if (!window.confirm(`Delete ${tc.key}? This cannot be undone.`)) return;
+            if (await repo.deleteCases([tc.id])) notify({ kind: 'success', message: `Deleted ${tc.key}.` });
+          }}
+          sx={{ color: 'var(--tm-bad)' }}
+        >
+          Delete
+        </MenuItem>
+      </Menu>
+
+      <CaseDrawer
+        open={Boolean(creating)}
+        testCase={creating}
+        options={options}
+        saving={saving}
+        subtitle={folder ? `New test case · ${repo.pathOf(folder.id)}` : 'New test case'}
+        onClose={() => setCreating(null)}
+        onSave={async (draft) => {
+          setSaving(true);
+          const result = await repo.addCases({ folderId: folder.id, subfolders: false, testCases: [draft] });
+          setSaving(false);
+          if (result) {
+            setCreating(null);
+            notify({ kind: 'success', message: `Created ${result.added[0].key}.` });
+          }
+        }}
+      />
 
       <NameDialog key={nameDialog?.title ?? 'none'} state={nameDialog} onClose={() => setNameDialog(null)} />
 

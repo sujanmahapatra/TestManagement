@@ -307,6 +307,11 @@ export const agentRequestSchema = z
     datasets: z.boolean().default(false),
     // Repository folders whose cases the agent should know about, so it does not repeat them.
     contextFolderIds: z.array(z.string().max(40)).max(20).default([]),
+    // Look through every saved case for related ones, as extra context.
+    scanRepository: z.boolean().default(true),
+    // Refinement: accepted cases are kept as they are; rejected ones must not come back.
+    lockedIds: z.array(z.string().max(40)).max(EDIT_LIMITS.cases.max).default([]),
+    rejectedTitles: z.array(z.string().max(600)).max(200).default([]),
     instruction: z.string().trim().min(3, 'Describe how to refine the cases.').max(AGENT_LIMITS.instruction).optional(),
     history: z.array(z.string().max(AGENT_LIMITS.instruction)).max(20).default([]),
     current: z.array(agentCaseSchema).max(EDIT_LIMITS.cases.max).optional(),

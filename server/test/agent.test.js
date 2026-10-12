@@ -349,6 +349,58 @@ test('a scoped refinement only touches the selected cases', async () => {
   assert.match(sent, /- Password field masks input/);
 });
 
+test('accepted cases are kept out of a refinement, and rejected ones are named to the model', async () => {
+  setAgentClient(stubClient(answer([{ name: 'Sign in', testCases: [modelCase({ title: 'Keep me' }), modelCase({ title: 'Rework me' })] }])).client);
+  const first = await runAgent(BASE, () => {});
+  const [keep, rework] = first.testCases;
+
+  const { client, calls } = stubClient(answer([{ name: 'Sign in', testCases: [modelCase({ ref: rework.id, change: 'edited', title: 'Reworked' })] }]));
+  setAgentClient(client);
+  const result = await runAgent(
+    agentRequestSchema.parse({
+      platform: 'web',
+      prompt: BASE.prompt,
+      instruction: 'Sharpen the titles.',
+      current: first.testCases,
+      lockedIds: [keep.id],
+      rejectedTitles: ['Login works on a fax machine'],
+    }),
+    () => {},
+  );
+
+  const sent = calls[0].params.messages[0].content.at(-1).text;
+  assert.doesNotMatch(sent, new RegExp(keep.id)); // not offered for editing
+  assert.match(sent, /- Keep me/); // listed as kept
+  assert.match(sent, /rejected these test cases[\s\S]*Login works on a fax machine/);
+  assert.deepEqual(result.testCases.map((c) => c.title).sort(), ['Keep me', 'Reworked']);
+  assert.equal(result.testCases.find((c) => c.title === 'Keep me').id, keep.id);
+});
+
+test('live reasoning from summarized thinking is passed on', async () => {
+  const { client, calls } = stubClient(answer([{ name: 'Sign in', testCases: [modelCase()] }]));
+  const original = client.beta.messages.stream;
+  client.beta.messages.stream = (params, options) => {
+    const s = original(params, options);
+    const finalMessage = s.finalMessage.bind(s);
+    const handlers = [];
+    const on = s.on.bind(s);
+    s.on = (ev, h) => {
+      if (ev === 'streamEvent') handlers.push(h);
+      return on(ev, h);
+    };
+    s.finalMessage = async () => {
+      handlers.forEach((h) => h({ type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'The PRD covers deleting sent messages.' } }, {}));
+      return finalMessage();
+    };
+    return s;
+  };
+  setAgentClient(client);
+  const events = [];
+  await runAgent(BASE, (e) => events.push(e));
+  assert.equal(calls[0].params.thinking.display, 'summarized');
+  assert.equal(events.filter((e) => e.type === 'reasoning').map((e) => e.text).join(''), 'The PRD covers deleting sent messages.');
+});
+
 test('a refinement that drops a case reports it as removed', async () => {
   setAgentClient(stubClient(answer([{ name: 'Sign in', testCases: [modelCase(), modelCase({ title: 'Duplicate login' })] }])).client);
   const first = await runAgent(BASE, () => {});

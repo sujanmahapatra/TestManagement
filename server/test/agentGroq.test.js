@@ -42,11 +42,24 @@ test('a Groq key selects Groq with its free-tier defaults', () => {
   assert.equal(config.agent.enabled, true);
 });
 
-test('a strict-schema model gets the suite schema and its answer becomes cases', async (t) => {
+/** An OpenAI-style event stream: reasoning first, then the answer in pieces. */
+function sse(reasoning, content, finish = 'stop') {
+  const chunks = [
+    ...reasoning.map((r) => ({ model: 'openai/gpt-oss-120b', choices: [{ delta: { reasoning: r } }] })),
+    ...content.match(/.{1,40}/gs).map((c) => ({ model: 'openai/gpt-oss-120b', choices: [{ delta: { content: c } }] })),
+    { choices: [{ delta: {}, finish_reason: finish }], x_groq: { usage: { prompt_tokens: 900, completion_tokens: 700 } } },
+  ];
+  return new Response(chunks.map((c) => `data: ${JSON.stringify(c)}\n\n`).join('') + 'data: [DONE]\n\n', {
+    status: 200,
+    headers: { 'content-type': 'text/event-stream' },
+  });
+}
+
+test('the reply streams live reasoning and drafted cases, and becomes fileable cases', async (t) => {
   const sent = [];
   t.mock.method(globalThis, 'fetch', async (url, init) => {
     sent.push({ url, headers: init.headers, body: JSON.parse(init.body) });
-    return reply(200, { model: 'openai/gpt-oss-120b', choices: [{ message: { content: JSON.stringify(SUITE) }, finish_reason: 'stop' }], usage: { prompt_tokens: 900, completion_tokens: 700 } });
+    return sse(['Reading the requirement. ', 'Links expire after 30 minutes.'], JSON.stringify(SUITE));
   });
 
   const events = [];
@@ -56,16 +69,44 @@ test('a strict-schema model gets the suite schema and its answer becomes cases',
   assert.deepEqual(tc.stepResults, ['An expiry error']);
   assert.equal(editedTestCaseSchema.safeParse(tc).success, true);
   assert.deepEqual(events.filter((e) => e.type === 'stage').map((e) => e.stage), ['analyze', 'scan', 'summary', 'write']);
+  assert.equal(events.filter((e) => e.type === 'reasoning').map((e) => e.text).join(''), 'Reading the requirement. Links expire after 30 minutes.');
+  assert.equal(events.find((e) => e.type === 'context').scanned >= 0, true);
 
+  assert.equal(sent.length, 1);
   const [{ url, headers, body }] = sent;
   assert.equal(url, 'https://api.groq.com/openai/v1/chat/completions');
   assert.equal(headers.authorization, 'Bearer gsk_test_key_for_the_suite_only');
-  assert.equal(body.response_format.type, 'json_schema');
-  assert.equal(body.response_format.json_schema.strict, true);
-  assert.equal(body.response_format.json_schema.schema.additionalProperties, false);
-  assert.equal(body.reasoning_effort, 'low');
+  assert.equal(body.stream, true);
+  assert.equal(body.include_reasoning, true);
+  assert.equal(body.response_format, undefined);
   assert.equal(body.max_completion_tokens, 6000);
-  assert.match(body.messages[1].content, /JSON/);
+  assert.match(body.messages[1].content, /Reply with only one JSON object/);
+});
+
+test('an unreadable streamed answer is retried once with the strict schema', async (t) => {
+  const sent = [];
+  t.mock.method(globalThis, 'fetch', async (url, init) => {
+    const body = JSON.parse(init.body);
+    sent.push(body);
+    return body.stream
+      ? sse([], 'Here are your tests: none, sorry')
+      : reply(200, { model: 'openai/gpt-oss-120b', choices: [{ message: { content: JSON.stringify(SUITE) }, finish_reason: 'stop' }], usage: {} });
+  });
+  const result = await runAgent(BASE, () => {});
+  assert.equal(result.testCases.length, 1);
+  assert.equal(sent.length, 2);
+  assert.equal(sent[1].response_format.type, 'json_schema');
+  assert.equal(sent[1].response_format.json_schema.strict, true);
+  assert.equal(sent[1].response_format.json_schema.schema.additionalProperties, false);
+});
+
+test('with a written requirement, screenshots are skipped with a notice', async (t) => {
+  t.mock.method(globalThis, 'fetch', async () => sse([], JSON.stringify(SUITE)));
+  const events = [];
+  const input = agentRequestSchema.parse({ platform: 'web', prompt: 'Password reset', files: [{ name: 'mock.png', mediaType: 'image/png', data: 'iVBORw0KGgo=' }] });
+  const result = await runAgent(input, (e) => events.push(e));
+  assert.equal(result.testCases.length, 1);
+  assert.match(events.find((e) => e.type === 'notice').message, /1 image was skipped/);
 });
 
 test('strict schemas require every property and forbid extras, all the way down', () => {
@@ -75,7 +116,7 @@ test('strict schemas require every property and forbid extras, all the way down'
   assert.deepEqual(schema.properties.a.items.required, ['b']);
 });
 
-test('images are refused for a text-only model before any call', async (t) => {
+test('images alone are refused for a text-only model before any call', async (t) => {
   const fetchMock = t.mock.method(globalThis, 'fetch', async () => assert.fail('no request should be sent'));
   const input = agentRequestSchema.parse({ platform: 'web', files: [{ name: 'mock.png', mediaType: 'image/png', data: 'iVBORw0KGgo=' }] });
   await assert.rejects(runAgent(input, () => {}), /reads text only/);
@@ -96,6 +137,6 @@ test("Groq's limits and errors become advice", async (t) => {
 });
 
 test('a cut-off answer reports the suite as too long', async (t) => {
-  t.mock.method(globalThis, 'fetch', async () => reply(200, { model: 'm', choices: [{ message: { content: '{"summary":"' }, finish_reason: 'length' }], usage: {} }));
+  t.mock.method(globalThis, 'fetch', async () => sse([], '{"summary":"', 'length'));
   await assert.rejects(runAgent(BASE, () => {}), /too large to finish/);
 });

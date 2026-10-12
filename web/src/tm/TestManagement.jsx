@@ -97,6 +97,37 @@ export default function TestManagement() {
     return true;
   };
 
+  /** The quick-create bar: the agent writes one case for a title, saved straight to the folder. */
+  const quickGenerate = async (title, target) => {
+    try {
+      const answer = await api.runAgent(
+        {
+          platform: agent.input.platform,
+          testType: 'regression',
+          prompt: `Write exactly one test case for this title, and keep the title exactly as given: "${title}"`,
+          files: [],
+          template: 'steps',
+          categories: [],
+          priorities: options.agent.priorities,
+          language: agent.input.language,
+          datasets: false,
+          scanRepository: true,
+        },
+        () => {},
+      );
+      const first = answer.testCases[0];
+      if (!first) throw new Error('The agent returned no test case. Try a more specific title.');
+      const { id, change, ...testCase } = first;
+      const result = await repo.addCases({ folderId: target, subfolders: false, testCases: [{ ...testCase, title }] });
+      if (!result) return false;
+      notify({ kind: 'success', message: `Created ${result.added[0].key} with ${testCase.steps.length} AI-written steps.` });
+      return true;
+    } catch (err) {
+      notify({ kind: 'error', message: err.message });
+      return false;
+    }
+  };
+
   const exportCases = async (destination, cases) => {
     const label = options.destinations.find((d) => d.key === destination)?.label ?? destination;
     try {
@@ -213,6 +244,7 @@ export default function TestManagement() {
               onGenerate={openGenerator}
               generateBadge={badge}
               onExport={exportCases}
+              onQuickGenerate={quickGenerate}
               notify={notify}
             />
           ) : (

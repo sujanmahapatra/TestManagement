@@ -228,6 +228,15 @@ export default function SettingsPopover({ anchorEl, open, onClose, input, change
             sx={{ display: 'flex', alignItems: 'center', gap: 0.75, px: 2, py: '6px', fontSize: 14, color: 'var(--tm-ink-soft)', cursor: 'pointer' }}
             onMouseEnter={() => setPanel(null)}
           >
+            Scan repository
+            <Info text="Look through every saved test case for ones related to this requirement, so the agent covers what is missing instead of repeating what exists." />
+            <Switch checked={input.scanRepository} onChange={(e) => change('scanRepository', e.target.checked)} size="small" sx={{ ml: 'auto' }} />
+          </Box>
+          <Box
+            component="label"
+            sx={{ display: 'flex', alignItems: 'center', gap: 0.75, px: 2, py: '6px', fontSize: 14, color: 'var(--tm-ink-soft)', cursor: 'pointer' }}
+            onMouseEnter={() => setPanel(null)}
+          >
             Include datasets
             <Info text="Cases that should run with several sets of input get a data table, one run per row." />
             <Box

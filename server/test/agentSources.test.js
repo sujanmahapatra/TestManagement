@@ -19,7 +19,7 @@ process.env.FIGMA_TOKEN = 'figd_test';
 process.env.LOG_LEVEL = 'silent';
 
 const { docxToText, pptxToText, xlsxToText, htmlToText } = await import('../src/domain/officeText.js');
-const { parseJiraKeys, parseConfluencePageId, parseFigmaUrl, fetchFigmaFrames, availableSources } = await import(
+const { parseJiraKeys, parseConfluencePageId, parseFigmaUrl, fetchFigmaFrames, availableSources, figmaStructure } = await import(
   '../src/domain/agentSources.js'
 );
 const { runAgent, setAgentClient } = await import('../src/domain/testCaseAgent.js');
@@ -144,6 +144,35 @@ test('Figma links give the file key and the frame id', () => {
 
 test('the server reports which link sources it can use', () => {
   assert.deepEqual(availableSources(), { jira: true, confluence: true, figma: true });
+});
+
+/* ---------------- Figma structure ---------------- */
+
+test("a design's structure lists screens, text, component properties and interactions", () => {
+  const login = {
+    id: '1:1',
+    type: 'FRAME',
+    name: 'Login',
+    children: [
+      { id: '1:2', type: 'TEXT', name: 'Title', characters: 'Welcome back' },
+      {
+        id: '1:3',
+        type: 'INSTANCE',
+        name: 'Button',
+        componentProperties: { 'Variant#12:0': { type: 'VARIANT', value: 'Primary' }, 'Disabled#3:1': { type: 'BOOLEAN', value: false } },
+        interactions: [{ trigger: { type: 'ON_CLICK' }, actions: [{ type: 'NODE', destinationId: '2:1', navigation: 'NAVIGATE' }] }],
+      },
+      { id: '1:4', type: 'TEXT', name: 'Hidden', characters: 'Secret', visible: false },
+    ],
+  };
+  const home = { id: '2:1', type: 'FRAME', name: 'Home', children: [] };
+  const text = figmaStructure('Chat app', [login, home]);
+  assert.match(text, /## Screen: Login/);
+  assert.match(text, /- Text "Title": Welcome back/);
+  assert.match(text, /- Component Button \(Variant=Primary, Disabled=false\)/);
+  assert.match(text, /on on click → navigate to "Home"|on click → navigate to "Home"/);
+  assert.doesNotMatch(text, /Secret/);
+  assert.match(text, /## Screen: Home/);
 });
 
 /* ---------------- Figma fetch ---------------- */

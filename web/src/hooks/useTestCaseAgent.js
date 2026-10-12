@@ -13,7 +13,11 @@ export const emptyAgentInput = (agentOptions) => ({
   language: 'English',
   datasets: false,
   contextFolderIds: [],
+  scanRepository: true,
 });
+
+/** Live reasoning is shown as a rolling tail; the whole of it is not needed. */
+const REASONING_KEEP = 6000;
 
 /**
  * The test case agent's state: what the reviewer gave it, its progress while
@@ -33,6 +37,11 @@ export function useTestCaseAgent({ agentOptions, notify }) {
   const [selected, setSelected] = useState(() => new Set());
   const [history, setHistory] = useState([]);
   const [conversation, setConversation] = useState([]);
+  // Reviewer verdicts by case id. Accepted cases are kept as they are through
+  // refinements; rejected ones are left out of "Add" and named to the agent
+  // so it does not write them again.
+  const [reviews, setReviews] = useState({});
+  const [rejectedHistory, setRejectedHistory] = useState([]);
   const fetchedLinks = useRef(new Set());
   const abort = useRef(null);
 
@@ -112,11 +121,15 @@ export function useTestCaseAgent({ agentOptions, notify }) {
       setError(null);
       const controller = new AbortController();
       abort.current = controller;
-      setRunning({ stage: 'analyze', drafted: 0, refining: Boolean(refinement) });
+      setRunning({ stage: 'analyze', drafted: 0, refining: Boolean(refinement), reasoning: '', context: null, notices: [] });
 
       const files = [...input.files, ...extraFiles.filter((f) => !input.files.some((g) => g.name === f.name && g.size === f.size))];
+      const rejectedNow = cases.filter((tc) => reviews[tc.id] === 'rejected');
+      const kept = cases.filter((tc) => reviews[tc.id] !== 'rejected');
+      const lockedIds = kept.filter((tc) => reviews[tc.id] === 'accepted').map((tc) => tc.id);
       // All selected means "everything", which needs no scope.
-      const scope = refinement && selected.size > 0 && selected.size < cases.length ? [...selected] : [];
+      const chosen = kept.filter((tc) => selected.has(tc.id));
+      const scope = refinement && chosen.length > 0 && chosen.length < kept.length ? chosen.map((tc) => tc.id) : [];
       const allTypes = input.categories.length === (agentOptions?.categories?.length ?? 0);
       const body = {
         platform: input.platform,
@@ -129,7 +142,15 @@ export function useTestCaseAgent({ agentOptions, notify }) {
         language: input.language,
         datasets: input.datasets,
         contextFolderIds: input.contextFolderIds,
-        ...(refinement && { instruction: refinement, history, current: cases, selectedIds: scope }),
+        scanRepository: input.scanRepository,
+        ...(refinement && {
+          instruction: refinement,
+          history,
+          current: kept,
+          selectedIds: scope,
+          lockedIds,
+          rejectedTitles: [...rejectedHistory, ...rejectedNow.map((tc) => tc.title)].slice(-200),
+        }),
       };
 
       if (refinement) {
@@ -137,14 +158,23 @@ export function useTestCaseAgent({ agentOptions, notify }) {
       }
 
       try {
+        // What the agent reported while working, kept for the conversation
+        // once it is done, and mirrored into `running` for the live view.
+        let live = { reasoning: '', context: null, notices: [] };
+        const onEvent = (event) => {
+          if (event.type === 'reasoning') live = { ...live, reasoning: `${live.reasoning}${event.text}`.slice(-REASONING_KEEP) };
+          if (event.type === 'context') live = { ...live, context: event };
+          if (event.type === 'notice') live = { ...live, notices: [...live.notices, event.message] };
+          setRunning((prev) => ({
+            ...prev,
+            ...live,
+            ...(event.type === 'stage' && { stage: event.stage }),
+            ...(event.type === 'progress' && { drafted: event.drafted }),
+          }));
+        };
         const answer = await api.runAgent(
           body,
-          (event) =>
-            setRunning((prev) => ({
-              ...prev,
-              ...(event.type === 'stage' && { stage: event.stage }),
-              ...(event.type === 'progress' && { drafted: event.drafted }),
-            })),
+          onEvent,
           controller.signal,
         );
 
@@ -157,11 +187,22 @@ export function useTestCaseAgent({ agentOptions, notify }) {
             : new Set(answer.testCases.map((tc) => tc.id)),
         );
         setHistory((prev) => (refinement ? [...prev, refinement] : []));
+        // Verdicts carry over by id: accepted stay accepted; rejected cases
+        // were left out of the refinement and are remembered by title.
+        const present = new Set(answer.testCases.map((tc) => tc.id));
+        setReviews((prev) =>
+          refinement ? Object.fromEntries(Object.entries(prev).filter(([id, v]) => v === 'accepted' && present.has(id))) : {},
+        );
+        setRejectedHistory((prev) => (refinement ? [...prev, ...rejectedNow.map((tc) => tc.title)] : []));
         const scenarios = new Set(answer.testCases.map((tc) => tc.scenario ?? '')).size;
         const reply = {
           role: 'ai',
           summary: answer.summary,
           assumptions: answer.assumptions,
+          gaps: answer.gaps ?? [],
+          reasoning: live.reasoning,
+          context: live.context,
+          notices: live.notices,
           changeSummary: answer.changeSummary,
           removed: answer.removed,
           count: answer.testCases.length,
@@ -193,7 +234,7 @@ export function useTestCaseAgent({ agentOptions, notify }) {
         setRunning(null);
       }
     },
-    [input, history, cases, selected, agentOptions, notify],
+    [input, history, cases, selected, reviews, rejectedHistory, agentOptions, notify],
   );
 
   /**
@@ -231,6 +272,23 @@ export function useTestCaseAgent({ agentOptions, notify }) {
     [],
   );
 
+  /** Accept or reject a case; the same verdict again clears it. Rejecting deselects. */
+  const review = useCallback((id, verdict) => {
+    setReviews((prev) => {
+      const next = { ...prev };
+      if (prev[id] === verdict) delete next[id];
+      else next[id] = verdict;
+      return next;
+    });
+    if (verdict === 'rejected') {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  }, []);
+
   const updateCase = useCallback(
     (next) => setCases((prev) => prev.map((tc) => (tc.id === next.id ? { ...next, change: tc.change } : tc))),
     [],
@@ -243,6 +301,8 @@ export function useTestCaseAgent({ agentOptions, notify }) {
       setSelected(new Set());
       setHistory([]);
       setConversation([]);
+      setReviews({});
+      setRejectedHistory([]);
       setError(null);
       fetchedLinks.current = new Set();
       if (!keepInput) setInput((prev) => ({ ...prev, prompt: '', files: [] }));
@@ -265,6 +325,8 @@ export function useTestCaseAgent({ agentOptions, notify }) {
     cases,
     selected,
     toggle,
+    reviews,
+    review,
     history,
     conversation,
     generate,

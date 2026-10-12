@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Button, Checkbox, IconButton, Menu, MenuItem, OutlinedInput, Select, Switch } from '@mui/material';
-import { AiBadge, ChevronDown, ChevronRight, FolderIcon, PaperclipIcon, PlusIcon, PriorityIcon, SendIcon } from './icons';
+import { AiBadge, CheckIcon, ChevronDown, ChevronRight, CloseIcon, FolderIcon, PaperclipIcon, PlusIcon, PriorityIcon, SendIcon } from './icons';
 import { PRIORITY_STYLE } from './theme';
-import { StageMark } from './GenerateProgress';
+import { LiveReasoning, StageMark, contextLabel } from './GenerateProgress';
 import CaseDrawer from './CaseDrawer';
 import { AGENT_STAGES, REFINE_SUGGESTIONS, groupByScenario } from '../domain/agent';
 
@@ -45,6 +45,7 @@ function UserBubble({ message }) {
 
 function AiMessage({ message }) {
   const [showAssumptions, setShowAssumptions] = useState(false);
+  const [showReasoning, setShowReasoning] = useState(false);
   return (
     <Box sx={{ display: 'flex', gap: 1.25, alignItems: 'flex-start' }}>
       <AiBadge size={26} />
@@ -68,6 +69,16 @@ function AiMessage({ message }) {
             {message.truncated && <Box sx={{ fontSize: 13, color: 'var(--tm-warn)' }}>Only the first 100 were kept.</Box>}
           </>
         )}
+        {message.context && <Box sx={{ fontSize: 12.5, color: 'var(--tm-muted)' }}>{contextLabel(message.context)}</Box>}
+        {message.gaps?.length > 0 && (
+          <Box sx={{ bgcolor: 'var(--tm-warn-soft)', borderRadius: '8px', px: 1.25, py: 1 }}>
+            <Box sx={{ fontSize: 12.5, fontWeight: 600, color: 'var(--tm-warn)', mb: 0.5 }}>Missing from the requirement</Box>
+            <Box component="ul" sx={{ m: 0, pl: 2.25, fontSize: 13, color: 'var(--tm-ink-soft)' }}>
+              {message.gaps.map((g) => <li key={g}>{g}</li>)}
+            </Box>
+          </Box>
+        )}
+        {message.notices?.map((n) => <Box key={n} sx={{ fontSize: 12.5, color: 'var(--tm-warn)' }}>{n}</Box>)}
         {message.assumptions?.length > 0 && (
           <Box>
             <Box
@@ -86,6 +97,20 @@ function AiMessage({ message }) {
             )}
           </Box>
         )}
+        {message.reasoning && (
+          <Box>
+            <Box
+              component="button"
+              type="button"
+              onClick={() => setShowReasoning((v) => !v)}
+              aria-expanded={showReasoning}
+              sx={{ all: 'unset', cursor: 'pointer', fontSize: 13, color: 'var(--tm-ai)', fontWeight: 500 }}
+            >
+              {showReasoning ? 'Hide reasoning' : 'Show reasoning'}
+            </Box>
+            {showReasoning && <LiveReasoning text={message.reasoning} maxHeight={260} />}
+          </Box>
+        )}
       </Box>
     </Box>
   );
@@ -94,17 +119,20 @@ function AiMessage({ message }) {
 function Thinking({ running }) {
   const label = AGENT_STAGES.find((s) => s.key === running.stage)?.label ?? 'Working';
   return (
-    <Box sx={{ display: 'flex', gap: 1.25, alignItems: 'center' }} aria-live="polite">
-      <AiBadge size={26} />
-      <StageMark state="active" size={16} />
-      <Box sx={{ fontSize: 14, color: 'var(--tm-muted)' }}>
-        {label}…{running.stage === 'write' && running.drafted ? ` ${running.drafted} drafted` : ''}
+    <Box>
+      <Box sx={{ display: 'flex', gap: 1.25, alignItems: 'center' }} aria-live="polite">
+        <AiBadge size={26} />
+        <StageMark state="active" size={16} />
+        <Box sx={{ fontSize: 14, color: 'var(--tm-muted)' }}>
+          {label}…{running.stage === 'write' && running.drafted ? ` ${running.drafted} drafted` : ''}
+        </Box>
       </Box>
+      <LiveReasoning text={running.reasoning} maxHeight={150} />
     </Box>
   );
 }
 
-function RefineBox({ total, scoped, disabled, onSend }) {
+function RefineBox({ total, scoped, accepted, disabled, onSend }) {
   const [text, setText] = useState('');
   const send = async () => {
     if (text.trim().length < 3) return;
@@ -173,6 +201,7 @@ function RefineBox({ total, scoped, disabled, onSend }) {
       </Box>
       <Box sx={{ fontSize: 12, color: 'var(--tm-muted)' }}>
         {scoped ? `Applies to the ${scoped} selected test cases; the rest stay as they are.` : `Applies to all ${total} test cases. Select some to refine only those.`}
+        {accepted ? ' Accepted cases are kept as they are.' : ''} Rejected cases are removed and not written again.
       </Box>
     </Box>
   );
@@ -180,11 +209,40 @@ function RefineBox({ total, scoped, disabled, onSend }) {
 
 /* ---------------- the case list ---------------- */
 
-function CaseRow({ testCase, checked, disabled, onToggle, onView }) {
+/** Accept / reject: a small toggle, filled with its colour when set. */
+function Verdict({ active, tone, label, onClick, disabled, children }) {
+  return (
+    <IconButton
+      size="small"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      aria-pressed={active}
+      title={label}
+      sx={{
+        width: 28,
+        height: 28,
+        borderRadius: '6px',
+        border: '1px solid',
+        borderColor: active ? tone : 'var(--tm-rule-strong)',
+        bgcolor: active ? tone : 'var(--tm-surface)',
+        color: active ? '#fff' : 'var(--tm-muted)',
+        '&:hover': { bgcolor: active ? tone : 'var(--tm-sunken)', color: active ? '#fff' : tone },
+      }}
+    >
+      {children}
+    </IconButton>
+  );
+}
+
+function CaseRow({ testCase, checked, verdict, disabled, onToggle, onView, onReview }) {
   const p = PRIORITY_STYLE[testCase.priority] ?? PRIORITY_STYLE.medium;
+  const rejected = verdict === 'rejected';
   return (
     <Box
       sx={{
+        opacity: rejected ? 0.55 : 1,
+        bgcolor: verdict === 'accepted' ? 'var(--tm-ok-soft)' : 'transparent',
         display: 'flex',
         alignItems: 'center',
         gap: 1.25,
@@ -196,12 +254,12 @@ function CaseRow({ testCase, checked, disabled, onToggle, onView }) {
         '&:hover .tm-view': { opacity: 1 },
       }}
     >
-      <Checkbox checked={checked} onChange={(e) => onToggle(e.target.checked)} disabled={disabled} sx={{ p: 0 }} inputProps={{ 'aria-label': `Select ${testCase.title}` }} />
+      <Checkbox checked={checked} onChange={(e) => onToggle(e.target.checked)} disabled={disabled || rejected} sx={{ p: 0 }} inputProps={{ 'aria-label': `Select ${testCase.title}` }} />
       <Box title={p.label} sx={{ display: 'inline-flex' }}>
         <PriorityIcon priority={testCase.priority} />
       </Box>
       <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Box sx={{ fontSize: 14, color: 'var(--tm-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{testCase.title}</Box>
+        <Box sx={{ fontSize: 14, color: 'var(--tm-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: rejected ? 'line-through' : 'none' }}>{testCase.title}</Box>
         {testCase.description && (
           <Box sx={{ fontSize: 12.5, color: 'var(--tm-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{testCase.description}</Box>
         )}
@@ -214,13 +272,22 @@ function CaseRow({ testCase, checked, disabled, onToggle, onView }) {
       <Button className="tm-view" size="small" variant="text" onClick={onView} sx={{ minWidth: 0, opacity: { md: 0.75 } }}>
         View
       </Button>
+      <Box sx={{ display: 'flex', gap: 0.5, flex: 'none' }}>
+        <Verdict label={verdict === 'accepted' ? 'Undo accept' : 'Accept'} active={verdict === 'accepted'} tone="#16a34a" disabled={disabled} onClick={() => onReview('accepted')}>
+          <CheckIcon size={15} />
+        </Verdict>
+        <Verdict label={rejected ? 'Undo reject' : 'Reject'} active={rejected} tone="#dc2626" disabled={disabled} onClick={() => onReview('rejected')}>
+          <CloseIcon size={14} />
+        </Verdict>
+      </Box>
     </Box>
   );
 }
 
-function ScenarioGroup({ name, items, selected, disabled, onToggle, onView }) {
+function ScenarioGroup({ name, items, selected, reviews, disabled, onToggle, onView, onReview }) {
   const [open, setOpen] = useState(true);
-  const count = items.filter((tc) => selected.has(tc.id)).length;
+  const selectable = items.filter((tc) => reviews[tc.id] !== 'rejected');
+  const count = selectable.filter((tc) => selected.has(tc.id)).length;
   return (
     <Box sx={{ border: '1px solid var(--tm-rule)', borderRadius: '10px', overflow: 'hidden', bgcolor: 'var(--tm-surface)' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 1.1, bgcolor: '#fafbfc' }}>
@@ -228,9 +295,9 @@ function ScenarioGroup({ name, items, selected, disabled, onToggle, onView }) {
           {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
         </IconButton>
         <Checkbox
-          checked={count === items.length}
-          indeterminate={count > 0 && count < items.length}
-          onChange={(e) => onToggle(items.map((tc) => tc.id), e.target.checked)}
+          checked={selectable.length > 0 && count === selectable.length}
+          indeterminate={count > 0 && count < selectable.length}
+          onChange={(e) => onToggle(selectable.map((tc) => tc.id), e.target.checked)}
           disabled={disabled}
           sx={{ p: 0 }}
           inputProps={{ 'aria-label': `Select all in ${name}` }}
@@ -243,7 +310,16 @@ function ScenarioGroup({ name, items, selected, disabled, onToggle, onView }) {
         </Box>
       </Box>
       {open && items.map((tc) => (
-        <CaseRow key={tc.id} testCase={tc} checked={selected.has(tc.id)} disabled={disabled} onToggle={(on) => onToggle([tc.id], on)} onView={() => onView(tc)} />
+        <CaseRow
+          key={tc.id}
+          testCase={tc}
+          checked={selected.has(tc.id)}
+          verdict={reviews[tc.id]}
+          disabled={disabled}
+          onToggle={(on) => onToggle([tc.id], on)}
+          onView={() => onView(tc)}
+          onReview={(v) => onReview(tc.id, v)}
+        />
       ))}
     </Box>
   );
@@ -348,8 +424,11 @@ export default function GenerateReview({ agent, options, repo, initialFolderId, 
   );
   const groups = useMemo(() => groupByScenario(visible), [visible]);
   const hasChanges = cases.some((tc) => tc.change === 'new' || tc.change === 'edited');
-  const chosen = cases.filter((tc) => selected.has(tc.id));
-  const allIds = cases.map((tc) => tc.id);
+  const reviews = agent.reviews;
+  const chosen = cases.filter((tc) => selected.has(tc.id) && reviews[tc.id] !== 'rejected');
+  const allIds = cases.filter((tc) => reviews[tc.id] !== 'rejected').map((tc) => tc.id);
+  const accepted = cases.filter((tc) => reviews[tc.id] === 'accepted').length;
+  const rejected = cases.filter((tc) => reviews[tc.id] === 'rejected').length;
 
   const add = async () => {
     setAdding(true);
@@ -389,7 +468,8 @@ export default function GenerateReview({ agent, options, repo, initialFolderId, 
         </Box>
         <RefineBox
           total={cases.length}
-          scoped={selected.size > 0 && selected.size < cases.length ? selected.size : 0}
+          scoped={chosen.length > 0 && chosen.length < allIds.length ? chosen.length : 0}
+          accepted={accepted}
           disabled={busy}
           onSend={(text) => agent.refine({}, text)}
         />
@@ -399,16 +479,23 @@ export default function GenerateReview({ agent, options, repo, initialFolderId, 
       <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: 0, bgcolor: 'var(--tm-ground)' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, flexWrap: 'wrap', px: 2.5, py: 1.5, borderBottom: '1px solid var(--tm-rule)', bgcolor: 'var(--tm-surface)' }}>
           <Checkbox
-            checked={selected.size === cases.length && cases.length > 0}
-            indeterminate={selected.size > 0 && selected.size < cases.length}
+            checked={chosen.length === allIds.length && allIds.length > 0}
+            indeterminate={chosen.length > 0 && chosen.length < allIds.length}
             onChange={(e) => agent.toggle(allIds, e.target.checked)}
             disabled={busy}
             sx={{ p: 0 }}
             inputProps={{ 'aria-label': 'Select all test cases' }}
           />
           <Box sx={{ fontSize: 14, color: 'var(--tm-ink)', fontWeight: 500 }}>
-            {selected.size} of {cases.length} selected
+            {chosen.length} of {cases.length} selected
           </Box>
+          {(accepted > 0 || rejected > 0) && (
+            <Box sx={{ fontSize: 13, color: 'var(--tm-muted)' }}>
+              {accepted > 0 && <Box component="span" sx={{ color: 'var(--tm-ok)' }}>{accepted} accepted</Box>}
+              {accepted > 0 && rejected > 0 && ' · '}
+              {rejected > 0 && <Box component="span" sx={{ color: 'var(--tm-bad)' }}>{rejected} rejected</Box>}
+            </Box>
+          )}
           <Box sx={{ ml: { sm: 'auto' }, display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
             {filter(priority, setPriority, options.agent.priorities, 'Priority', (p) => (
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -430,7 +517,17 @@ export default function GenerateReview({ agent, options, repo, initialFolderId, 
 
         <Box sx={{ flex: 1, overflowY: 'auto', p: 2.5, display: 'flex', flexDirection: 'column', gap: 1.5, opacity: running ? 0.6 : 1, transition: 'opacity .15s' }}>
           {groups.map((g) => (
-            <ScenarioGroup key={g.name} name={g.name} items={g.items} selected={selected} disabled={busy} onToggle={agent.toggle} onView={setViewing} />
+            <ScenarioGroup
+              key={g.name}
+              name={g.name}
+              items={g.items}
+              selected={selected}
+              reviews={reviews}
+              disabled={busy}
+              onToggle={agent.toggle}
+              onView={setViewing}
+              onReview={agent.review}
+            />
           ))}
           {groups.length === 0 && <Box sx={{ textAlign: 'center', color: 'var(--tm-muted)', py: 6, fontSize: 14 }}>No test cases match these filters.</Box>}
         </Box>

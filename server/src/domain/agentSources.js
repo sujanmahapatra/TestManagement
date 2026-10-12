@@ -164,6 +164,69 @@ export function parseFigmaUrl(ref) {
 }
 
 const FRAME_TYPES = new Set(['FRAME', 'COMPONENT', 'COMPONENT_SET', 'INSTANCE', 'SECTION']);
+const STRUCTURE_LIMIT = 30_000;
+
+/** A component's properties as "Variant=Primary, Disabled=false". */
+const propsOf = (node) =>
+  Object.entries(node.componentProperties ?? {})
+    .map(([key, p]) => `${key.replace(/#[\d:]+$/, '')}=${p?.value}`)
+    .join(', ');
+
+/** Prototype interactions: "on click → navigate to Dashboard". */
+function interactionsOf(node, names) {
+  const out = [];
+  for (const it of node.interactions ?? []) {
+    for (const a of it.actions ?? []) {
+      const target = a?.destinationId ? names.get(a.destinationId) ?? a.destinationId : null;
+      const what = a?.type === 'NODE' ? `${(a.navigation ?? 'navigate').toLowerCase()} to "${target}"` : (a?.type ?? '').toLowerCase().replace(/_/g, ' ');
+      if (what) out.push(`on ${(it.trigger?.type ?? 'interaction').toLowerCase().replace(/_/g, ' ')} → ${what}`);
+    }
+  }
+  for (const r of node.reactions ?? []) {
+    const a = r.action;
+    if (a?.type === 'NODE' && a.destinationId) out.push(`on ${(r.trigger?.type ?? 'click').toLowerCase().replace(/_/g, ' ')} → navigate to "${names.get(a.destinationId) ?? a.destinationId}"`);
+  }
+  return [...new Set(out)];
+}
+
+/**
+ * A design's structure as text: per frame, its visible text, components with
+ * their properties, and prototype interactions -- what a tester reads to
+ * understand the intended flows, and what a text-only model can use.
+ */
+export function figmaStructure(fileName, frameNodes) {
+  const names = new Map();
+  const index = (n) => {
+    if (n?.id) names.set(n.id, n.name);
+    (n?.children ?? []).forEach(index);
+  };
+  frameNodes.forEach(index);
+
+  const lines = [`# Figma design: ${fileName}`];
+  for (const frame of frameNodes) {
+    lines.push('', `## Screen: ${frame.name}`);
+    const walk = (n, depth) => {
+      if (!n || n.visible === false || depth > 12) return;
+      const pad = '  '.repeat(Math.max(depth - 1, 0));
+      const acts = interactionsOf(n, names);
+      if (n.type === 'TEXT' && n.characters?.trim()) {
+        const text = n.characters.replace(/\s+/g, ' ').trim();
+        lines.push(`${pad}- Text${n.name && n.name !== text ? ` "${n.name}"` : ''}: ${text}`);
+      } else if (n.type === 'INSTANCE' || n.type === 'COMPONENT') {
+        const props = propsOf(n);
+        lines.push(`${pad}- Component ${n.name}${props ? ` (${props})` : ''}`);
+      } else if (depth > 0 && (n.type === 'FRAME' || n.type === 'GROUP') && (acts.length || n.name)) {
+        lines.push(`${pad}- ${n.type === 'FRAME' ? 'Section' : 'Group'} ${n.name}`);
+      }
+      for (const a of acts) lines.push(`${pad}  · ${a}`);
+      (n.children ?? []).forEach((c) => walk(c, depth + 1));
+    };
+    walk(frame, 0);
+    for (const a of interactionsOf(frame, names)) lines.push(`· Screen ${a}`);
+  }
+  const text = lines.join('\n');
+  return text.length > STRUCTURE_LIMIT ? `${text.slice(0, STRUCTURE_LIMIT)}\n… (structure truncated)` : text;
+}
 
 export async function fetchFigmaFrames(ref) {
   const token = config.agent.figmaToken;
@@ -205,17 +268,30 @@ export async function fetchFigmaFrames(ref) {
   const ids = chosen.map((f) => f.id).join(',');
   const images = await figma(`/images/${parsed.key}?ids=${encodeURIComponent(ids)}&format=png&scale=1`);
 
-  const attachments = [];
+  const pictures = [];
   for (const frame of chosen) {
     const url = images.images?.[frame.id];
     if (!url) continue;
     const file = await download(url, {}, 'image/png', `Figma – ${frame.name}.png`.replace(/[\\/:*?"<>|]+/g, ' '));
-    if (file) attachments.push(file);
+    if (file) pictures.push(file);
   }
-  if (attachments.length === 0) throw badRef('Figma did not render any of the frames. Try linking a single frame.');
+
+  // The frames' full layer trees: text, components, properties, interactions.
+  let structure = null;
+  try {
+    const full = await figma(`/files/${parsed.key}/nodes?ids=${encodeURIComponent(ids)}`);
+    const nodes = chosen.map((f) => full.nodes?.[f.id]?.document).filter(Boolean);
+    if (nodes.length) structure = figmaStructure(fileName, nodes);
+  } catch (err) {
+    logger.warn({ err: err.message }, 'figma structure fetch failed; using images only');
+  }
+
+  if (pictures.length === 0 && !structure) throw badRef('Figma did not render any of the frames. Try linking a single frame.');
+  const safe = fileName.replace(/[\\/:*?"<>|]+/g, ' ').slice(0, 80);
+  const attachments = [...(structure ? [textAttachment(`Figma – ${safe} – structure.txt`, structure)] : []), ...pictures];
 
   return {
-    label: `${fileName} (${attachments.length} ${attachments.length === 1 ? 'frame' : 'frames'})`,
+    label: `${fileName} (${chosen.length} ${chosen.length === 1 ? 'frame' : 'frames'})`,
     attachments,
     skipped: frames.length - chosen.length,
   };

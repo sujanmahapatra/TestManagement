@@ -117,6 +117,40 @@ export async function titlesIn(folderIds, limit = 300) {
   return data.cases.filter((c) => scope.has(c.folderId)).slice(0, limit).map((c) => c.title);
 }
 
+const STOP_WORDS = new Set(
+  'the and for with that this from are was were will shall should must can could have has had not but into than then when what which who whom their there they them user users test case cases able also each other only some such very your about after before more most over under upon while'.split(' '),
+);
+const wordsOf = (text) =>
+  new Set(
+    String(text ?? '')
+      .toLowerCase()
+      .match(/[a-z][a-z0-9]{3,}/g)
+      ?.filter((w) => !STOP_WORDS.has(w)) ?? [],
+  );
+
+/**
+ * "Scan the repository": the saved cases most related to a requirement, by
+ * shared words in their titles and descriptions. Cheap and deterministic --
+ * enough to tell the agent what already exists so it covers what does not.
+ *
+ * @returns {Promise<{ scanned: number, related: string[] }>}
+ */
+export async function relatedCases(text, { limit = 60 } = {}) {
+  const data = await load();
+  const want = wordsOf(text);
+  if (want.size === 0 || data.cases.length === 0) return { scanned: data.cases.length, related: [] };
+  const scored = data.cases
+    .map((c) => {
+      const have = wordsOf(`${c.title} ${c.description ?? ''} ${c.scenario ?? ''}`);
+      let shared = 0;
+      for (const w of have) if (want.has(w)) shared += 1;
+      return { title: c.title, score: shared / Math.sqrt(have.size || 1) };
+    })
+    .filter((c) => c.score >= 0.5)
+    .sort((a, b) => b.score - a.score);
+  return { scanned: data.cases.length, related: [...new Set(scored.map((c) => c.title))].slice(0, limit) };
+}
+
 /* ---------------- folders ---------------- */
 
 function addFolder(data, name, parentId) {
