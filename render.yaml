@@ -19,7 +19,20 @@ services:
       - key: NODE_ENV
         value: production
       - key: DESTINATIONS
-        value: excel
+        value: excel,jira
+      # Jira: filing test cases and linking them to their stories. Until the
+      # two sign-in values below are entered, Jira stays paused and the Jira
+      # badge in the app says what is missing.
+      - key: JIRA_BASE_URL
+        value: https://sujanmahapatro.atlassian.net
+      - key: JIRA_PROJECT_KEY
+        value: SCRUM
+      - key: JIRA_ISSUE_TYPE
+        value: Task
+      - key: ATLASSIAN_EMAIL
+        sync: false
+      - key: ATLASSIAN_API_TOKEN
+        sync: false
       - key: GENERATOR
         value: template
       # The password people sign in with (at least 8 characters). Leave it

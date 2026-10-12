@@ -163,13 +163,19 @@ function atlassianScopes(destinations) {
 }
 
 function load() {
-  const destinations = csv(process.env.DESTINATIONS).length
-    ? csv(process.env.DESTINATIONS)
-    : ['jira'];
+  const requested = csv(process.env.DESTINATIONS).length ? csv(process.env.DESTINATIONS) : ['jira'];
+  const apiToken = process.env.ATLASSIAN_API_TOKEN || process.env.JIRA_API_TOKEN || undefined;
+
+  // Jira or Confluence switched on before any Atlassian sign-in is configured
+  // (no API token, no OAuth app) is paused rather than fatal: the service
+  // still starts, and the Jira check says what is missing.
+  const atlassianReady = Boolean(apiToken || process.env.CLIENT_ID);
+  const paused = atlassianReady ? [] : requested.filter((d) => d === 'jira' || d === 'confluence');
+  const destinations = requested.filter((d) => !paused.includes(d));
+  if (destinations.length === 0) destinations.push('excel');
 
   const enabled = (key) => destinations.includes(key);
   const needsAtlassian = enabled('jira') || enabled('confluence');
-  const apiToken = process.env.ATLASSIAN_API_TOKEN || process.env.JIRA_API_TOKEN || undefined;
 
   const result = schema.safeParse({
     port: process.env.PORT,
@@ -278,7 +284,7 @@ function load() {
     const lines = result.error.issues.map((i) => `  - ${i.path.join('.')}: ${i.message}`);
     throw new Error(`Invalid configuration:\n${lines.join('\n')}`);
   }
-  return Object.freeze(result.data);
+  return Object.freeze({ ...result.data, pausedDestinations: paused });
 }
 
 export const config = load();

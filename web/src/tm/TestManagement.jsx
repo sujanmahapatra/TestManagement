@@ -183,7 +183,7 @@ export default function TestManagement({ onSignOut }) {
           {!options.agent.enabled && (
             <Box sx={{ fontSize: 12.5, color: '#fbbf24', display: { xs: 'none', md: 'block' } }}>AI is off: set ANTHROPIC_API_KEY</Box>
           )}
-          <JiraStatus enabled={options.destinations.some((d) => d.key === 'jira')} />
+          <JiraStatus enabled={options.destinations.some((d) => d.key === 'jira') || options.pausedDestinations?.includes('jira')} />
           {onSignOut && (
             <Button size="small" onClick={onSignOut} sx={{ color: '#cbd5e1', minWidth: 0, '&:hover': { bgcolor: '#1e293b' } }}>
               Sign out

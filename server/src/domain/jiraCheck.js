@@ -24,6 +24,14 @@ async function get(target, path) {
  *   account?: string, project?: { key, name }, issueType?: string, issueTypes?: string[], needsAuth?: boolean }>}
  */
 export async function checkJira(sessionId) {
+  if (!config.jira && config.pausedDestinations?.includes('jira')) {
+    return {
+      configured: false,
+      ok: false,
+      paused: true,
+      message: 'Jira is switched on but not signed in yet. Add ATLASSIAN_EMAIL and ATLASSIAN_API_TOKEN (on Render: your service, then Environment), along with JIRA_BASE_URL and JIRA_PROJECT_KEY.',
+    };
+  }
   if (!config.jira) {
     return { configured: false, ok: false, message: 'Jira is not switched on. Add jira to DESTINATIONS in server/.env.' };
   }

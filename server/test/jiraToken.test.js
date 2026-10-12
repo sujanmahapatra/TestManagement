@@ -36,6 +36,16 @@ const CASE = {
   links: ['QA-7'],
 };
 
+test('Jira switched on without any sign-in is paused, not fatal', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const out = execFileSync(
+    process.execPath,
+    ['--input-type=module', '-e', "const { config } = await import('./src/config.js'); console.log(JSON.stringify({ d: config.destinations, p: config.pausedDestinations, jira: Boolean(config.jira) }))"],
+    { env: { PATH: process.env.PATH, DESTINATIONS: 'excel,jira', JIRA_BASE_URL: 'https://acme.atlassian.net', JIRA_PROJECT_KEY: 'QA', LOG_LEVEL: 'silent' }, encoding: 'utf8' },
+  );
+  assert.deepEqual(JSON.parse(out), { d: ['excel'], p: ['jira'], jira: false });
+});
+
 test('an API token needs no OAuth app and no browser connection', () => {
   assert.equal(config.atlassian, undefined);
   assert.equal(config.atlassianToken.email, 'qa.lead@acme.test');

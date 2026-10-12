@@ -35,6 +35,8 @@ testCaseRoutes.get('/options', (_req, res) => {
   res.json({
     success: true,
     destinations: listDestinations(),
+    // Switched on but waiting for sign-in details (see GET /api/integrations/jira).
+    pausedDestinations: config.pausedDestinations,
     platforms: listPlatforms(),
     testTypes: listTestTypes(),
     negativeVariants: listNegativeVariants(),
