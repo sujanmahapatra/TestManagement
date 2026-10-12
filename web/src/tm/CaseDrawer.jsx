@@ -131,6 +131,48 @@ function DatasetEditor({ dataset, onChange }) {
   );
 }
 
+/** The Jira stories this case tests; filing to Jira links the new issue to each. */
+function LinksEditor({ links, onChange }) {
+  const [value, setValue] = useState('');
+  const key = value.trim().toUpperCase();
+  const valid = /^[A-Z][A-Z0-9_]+-\d+$/.test(key);
+  const add = () => {
+    if (valid && !links.includes(key) && links.length < 10) onChange([...links, key]);
+    setValue('');
+  };
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+      <Label>Linked requirements</Label>
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, alignItems: 'center' }}>
+        {links.map((k) => (
+          <Box key={k} sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, pl: 1, pr: 0.25, py: '2px', borderRadius: '6px', bgcolor: 'var(--tm-primary-soft)', color: 'var(--tm-primary-ink)', fontSize: 13, fontWeight: 500 }}>
+            {k}
+            <IconButton size="small" aria-label={`Remove link to ${k}`} onClick={() => onChange(links.filter((l) => l !== k))} sx={{ p: '2px', color: 'inherit' }}>
+              <CloseIcon size={12} />
+            </IconButton>
+          </Box>
+        ))}
+        <OutlinedInput
+          size="small"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              add();
+            }
+          }}
+          onBlur={() => valid && add()}
+          placeholder="Add issue key, e.g. QA-12"
+          inputProps={{ 'aria-label': 'Add a linked Jira issue', maxLength: 30 }}
+          sx={{ width: 190, '& input': { py: '5px' } }}
+        />
+      </Box>
+      <Box sx={{ fontSize: 12, color: 'var(--tm-muted)' }}>Filing to Jira links the test case to these issues.</Box>
+    </Box>
+  );
+}
+
 /**
  * View and edit one test case, in a panel over the right edge. Edits stay in
  * the panel until saved, so closing discards them.
@@ -286,6 +328,8 @@ export default function CaseDrawer({ testCase, open, options, onSave, onClose, s
                   <DatasetEditor dataset={draft.dataset} onChange={(dataset) => set({ dataset })} />
                 </Box>
               )}
+
+              <LinksEditor links={draft.links ?? []} onChange={(links) => set({ links })} />
 
               {draft.source?.excerpt && (
                 <Box sx={{ borderLeft: '3px solid var(--tm-ai)', bgcolor: 'var(--tm-ai-soft)', borderRadius: '0 6px 6px 0', px: 1.5, py: 1, fontSize: 13.5, color: 'var(--tm-ink-soft)' }}>

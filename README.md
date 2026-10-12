@@ -306,6 +306,34 @@ none even to create.
 `.env` is listed in `.gitignore`. Never commit it, and never paste real
 values into a ticket or chat.
 
+### Jira and Confluence — API token (simplest)
+
+1. Create a token at <https://id.atlassian.com/manage-profile/security/api-tokens>.
+2. Set it with your Atlassian login email, your site and project:
+
+```bash
+DESTINATIONS=excel,jira
+ATLASSIAN_EMAIL=you@example.com
+ATLASSIAN_API_TOKEN=            # treat as a password
+JIRA_BASE_URL=https://your-site.atlassian.net
+JIRA_PROJECT_KEY=QA             # the prefix of its issue keys
+JIRA_ISSUE_TYPE=Task            # "Test" exists only with Xray/Zephyr
+```
+
+With a token, requests go straight to the site with Basic auth. There's no
+OAuth app, callback URL or browser consent, so it works the same locally and
+on Render. Everything is filed as that one account.
+
+The **Jira** badge in the top bar checks the link: sign-in, project, issue type
+and link type. It says what to fix, e.g. "Project QA has no "Test" issue type.
+Set JIRA_ISSUE_TYPE to one of: Task, Bug, Story".
+
+**Traceability:** a case generated from a Jira issue carries it in **Linked
+requirements**, which you can edit in the case panel. Filing to Jira creates
+the test issue and links it to each one (`JIRA_LINK_TYPE`, default
+`Relates`), so the story lists its tests. A link that fails is reported
+without undoing the filed issue.
+
 ### Jira and Confluence — Atlassian OAuth 2.0 (3LO)
 
 1. Go to <https://developer.atlassian.com/console/myapps/> and

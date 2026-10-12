@@ -1,9 +1,8 @@
 import { config } from '../config.js';
-import { getAccessToken } from '../clients/atlassianAuth.js';
+import { atlassianTarget, usesApiToken } from '../clients/atlassian.js';
+import { logger } from '../logger.js';
 import { requestWithRetry } from '../clients/http.js';
 import { datasetLines, hasStepResults, metaLine, stepLines } from '../domain/caseFormat.js';
-
-const API_HOST = 'https://api.atlassian.com';
 
 const text = (value) => ({ type: 'text', text: value });
 const paragraph = (value) => ({ type: 'paragraph', content: [text(value)] });
@@ -101,25 +100,58 @@ function extractMessages(body) {
   }
 }
 
+/**
+ * Links a filed test case to the stories it was generated from, so each
+ * story shows its tests. A link that fails (an issue deleted since, a link
+ * type the site lacks) is reported, never allowed to undo the filing.
+ */
+async function linkRequirements(target, created, keys) {
+  const linked = [];
+  const failed = [];
+  for (const key of keys) {
+    try {
+      await requestWithRetry(`${target.jiraApi}/issueLink`, {
+        system: 'Jira',
+        describe,
+        extractMessages,
+        method: 'POST',
+        headers: { authorization: target.auth, 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({
+          type: { name: config.jira.linkType },
+          inwardIssue: { key: created },
+          outwardIssue: { key },
+        }),
+      });
+      linked.push(key);
+    } catch (err) {
+      logger.warn({ created, key, err: err.message }, 'jira requirement link failed');
+      failed.push(key);
+    }
+  }
+  return { linked, failed };
+}
+
 export const jiraExporter = {
   key: 'jira',
   label: 'Jira',
   kind: 'issue',
-  auth: 'atlassian',
+  // With an API token there is nothing for the browser to connect.
+  get auth() {
+    return usesApiToken() ? 'token' : 'atlassian';
+  },
   /** What the UI shows under the destination dropdown. */
   describeTarget: () => `${config.jira.issueType} issue in ${config.jira.projectKey}`,
 
   /** The request `export` would send for one case -- for the UI's payload view. */
   describeRequest: (testCase) => ({
     method: 'POST',
-    path: '/ex/jira/{cloudId}/rest/api/3/issue',
+    path: usesApiToken() ? `${config.jira.baseUrl.replace(/\/$/, '')}/rest/api/3/issue` : '/ex/jira/{cloudId}/rest/api/3/issue',
     contentType: 'application/json',
     body: toIssuePayload(testCase),
   }),
 
   async export(testCases, { sessionId }) {
-    const { accessToken, cloudIds } = await getAccessToken(sessionId);
-    const url = `${API_HOST}/ex/jira/${cloudIds.jira}/rest/api/3/issue`;
+    const target = await atlassianTarget('jira', sessionId);
     const base = config.jira.baseUrl.replace(/\/$/, '');
     const items = [];
 
@@ -127,20 +159,17 @@ export const jiraExporter = {
     // to hit Jira's rate limit, and a partial failure is easier to report
     // when the keys created so far are known.
     for (const testCase of testCases) {
-      const result = await requestWithRetry(url, {
+      const result = await requestWithRetry(`${target.jiraApi}/issue`, {
         system: 'Jira',
         describe,
         extractMessages,
         method: 'POST',
-        headers: {
-          authorization: `Bearer ${accessToken}`,
-          'content-type': 'application/json',
-          accept: 'application/json',
-        },
+        headers: { authorization: target.auth, 'content-type': 'application/json', accept: 'application/json' },
         body: JSON.stringify(toIssuePayload(testCase)),
       });
 
-      items.push({ ref: result.key, url: `${base}/browse/${result.key}`, title: testCase.title });
+      const links = testCase.links?.length ? await linkRequirements(target, result.key, testCase.links) : { linked: [], failed: [] };
+      items.push({ ref: result.key, url: `${base}/browse/${result.key}`, title: testCase.title, ...links });
     }
     return { kind: 'issue', items };
   },

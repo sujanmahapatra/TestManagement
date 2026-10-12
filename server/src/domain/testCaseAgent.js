@@ -315,6 +315,19 @@ function toDataset(raw) {
   return rows.length ? { columns, rows } : null;
 }
 
+const JIRA_KEY = /\b[A-Z][A-Z0-9_]+-\d+\b/g;
+
+/**
+ * The Jira stories a case tests: those named in the source it cites, or --
+ * when the whole run came from one Jira issue -- that issue.
+ */
+function requirementLinks(raw, input) {
+  const cited = String(raw.source?.name ?? '').toUpperCase().match(JIRA_KEY) ?? [];
+  if (cited.length) return [...new Set(cited)].slice(0, 10);
+  const issues = [...new Set(input.files.map((f) => f.name.match(/^([A-Z][A-Z0-9_]+-\d+)\.txt$/)?.[1]).filter(Boolean))];
+  return issues.length === 1 ? issues : [];
+}
+
 /** One model case -> the app's test case shape, which every exporter files. */
 function toTestCase(raw, scenario, { input, platform, testType, id }) {
   const steps = raw.steps
@@ -338,6 +351,7 @@ function toTestCase(raw, scenario, { input, platform, testType, id }) {
     kind,
     priority: pick(raw.priority, input.priorities, input.priorities.includes('medium') ? 'medium' : input.priorities[0]),
     dataset: toDataset(raw.dataset),
+    links: requirementLinks(raw, input),
     category: pick(raw.category, CATEGORIES, 'Functional'),
     tags: [...new Set(raw.tags.map((t) => clip(t, 40).toLowerCase().replace(/\s+/g, '-')).filter(Boolean))].slice(0, 10),
     source: { name: clip(raw.source.name, 200), excerpt: clip(raw.source.excerpt, 600) },

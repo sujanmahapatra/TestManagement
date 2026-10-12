@@ -168,6 +168,7 @@ const repository = {
 
 export const api = {
   repository,
+  checkJira: () => request('/api/integrations/jira'),
   runAgent,
   fetchAgentSource: ({ type, ref }) => request('/api/agent/sources', { method: 'POST', body: { type, ref } }),
   getAuthStatus: () => request('/auth/status'),

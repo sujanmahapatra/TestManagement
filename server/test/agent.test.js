@@ -211,6 +211,18 @@ test('attachments become document and image blocks ahead of the requirement', as
   assert.equal(text.source.data, 'As a user I can sign in');
 });
 
+test('cases generated from a Jira story are linked to it', async () => {
+  setAgentClient(stubClient(answer([{ name: 'Delete', testCases: [modelCase({ source: { name: 'Prompt', excerpt: 'x' } }), modelCase({ source: { name: 'PAY-9 – spec.pdf', excerpt: 'y' } })] }])).client);
+  const input = agentRequestSchema.parse({
+    platform: 'web',
+    files: [{ name: 'QA-7.txt', mediaType: 'text/plain', data: Buffer.from('QA-7: Delete messages').toString('base64') }],
+  });
+  const { testCases } = await runAgent(input, () => {});
+  assert.deepEqual(testCases[0].links, ['QA-7']); // the run's only Jira issue
+  assert.deepEqual(testCases[1].links, ['PAY-9']); // the issue its source names
+  for (const tc of testCases) assert.equal(editedTestCaseSchema.safeParse(tc).success, true);
+});
+
 test('BDD cases take their assertions from the Then lines', async () => {
   const { client } = stubClient(
     answer([

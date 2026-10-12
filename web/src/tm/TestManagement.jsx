@@ -8,6 +8,7 @@ import { buildTheme } from '../theme';
 import ClassicApp from '../App';
 import RepositoryPage from './RepositoryPage';
 import GenerateWizard from './GenerateWizard';
+import JiraStatus from './JiraStatus';
 import { AiBadge, CheckIcon, CloseIcon, ListIcon, WandIcon } from './icons';
 
 const NO_OPTIONS = {
@@ -25,6 +26,16 @@ const NAV = [
 ];
 
 const classicTheme = buildTheme('light');
+
+/** " Linked to QA-7, QA-9." / " 1 link failed (QA-8)." after a Jira export. */
+function linkSummary(items) {
+  const linked = [...new Set(items.flatMap((i) => i.linked ?? []))];
+  const failed = [...new Set(items.flatMap((i) => i.failed ?? []))];
+  return (
+    (linked.length ? ` Linked to ${linked.join(', ')}.` : '') +
+    (failed.length ? ` Could not link to ${failed.join(', ')} — check the issues exist.` : '')
+  );
+}
 
 const TOAST_TONE = {
   success: { color: 'var(--tm-ok)', icon: <CheckIcon size={16} /> },
@@ -137,7 +148,9 @@ export default function TestManagement() {
           ? { kind: 'success', message: `Downloaded ${result.issueKey} with ${result.count} test cases.` }
           : {
               kind: 'success',
-              message: `Exported ${result.items.length} test cases to ${label}: ${result.items.map((i) => i.ref).slice(0, 6).join(', ')}${result.items.length > 6 ? '…' : ''}`,
+              message:
+                `Exported ${result.items.length} test cases to ${label}: ${result.items.map((i) => i.ref).slice(0, 6).join(', ')}${result.items.length > 6 ? '…' : ''}.` +
+                linkSummary(result.items),
               action: result.url ? { label: 'Open', href: result.url } : null,
             },
       );
@@ -170,6 +183,7 @@ export default function TestManagement() {
           {!options.agent.enabled && (
             <Box sx={{ fontSize: 12.5, color: '#fbbf24', display: { xs: 'none', md: 'block' } }}>AI is off: set ANTHROPIC_API_KEY</Box>
           )}
+          <JiraStatus enabled={options.destinations.some((d) => d.key === 'jira')} />
           {atlassian &&
             (auth?.connected ? (
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, fontSize: 13, color: '#cbd5e1' }}>

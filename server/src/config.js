@@ -57,6 +57,8 @@ const jiraSchema = z.object({
     .optional(),
   defaultLabels: z.array(z.string()).default([]),
   extraFields: jsonObject('JIRA_EXTRA_FIELDS'),
+  // How a filed test case is linked to the story it was generated from.
+  linkType: z.string().min(1).default('Relates'),
 });
 
 const confluenceSchema = z.object({
@@ -120,6 +122,16 @@ const schema = z.object({
   }),
 
   atlassian: atlassianSchema.optional(),
+  // The simpler alternative to OAuth: an Atlassian account's email and API
+  // token (id.atlassian.com -> Security -> API tokens). Works for Jira and
+  // Confluence, needs no app registration or callback URL, and acts as that
+  // one account for everyone using the tool.
+  atlassianToken: z
+    .object({
+      email: z.string().email('ATLASSIAN_EMAIL must be the email of the Atlassian account'),
+      apiToken: z.string().min(10, 'ATLASSIAN_API_TOKEN looks too short'),
+    })
+    .optional(),
   jira: jiraSchema.optional(),
   confluence: confluenceSchema.optional(),
   excel: excelSchema.optional(),
@@ -155,6 +167,7 @@ function load() {
 
   const enabled = (key) => destinations.includes(key);
   const needsAtlassian = enabled('jira') || enabled('confluence');
+  const apiToken = process.env.ATLASSIAN_API_TOKEN || process.env.JIRA_API_TOKEN || undefined;
 
   const result = schema.safeParse({
     port: process.env.PORT,
@@ -194,7 +207,10 @@ function load() {
       figmaToken: process.env.FIGMA_TOKEN || undefined,
     },
 
-    atlassian: needsAtlassian
+    atlassianToken: apiToken ? { email: process.env.ATLASSIAN_EMAIL || process.env.JIRA_EMAIL, apiToken } : undefined,
+
+    // OAuth is only needed when no API token is configured.
+    atlassian: needsAtlassian && !apiToken
       ? {
           clientId: process.env.CLIENT_ID,
           clientSecret: process.env.CLIENT_SECRET,
@@ -211,6 +227,7 @@ function load() {
           platformField: process.env.JIRA_PLATFORM_FIELD || undefined,
           defaultLabels: csv(process.env.JIRA_DEFAULT_LABELS),
           extraFields: process.env.JIRA_EXTRA_FIELDS,
+          linkType: process.env.JIRA_LINK_TYPE || undefined,
         }
       : undefined,
 

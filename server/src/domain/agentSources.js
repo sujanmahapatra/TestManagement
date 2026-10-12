@@ -1,6 +1,6 @@
 import { config } from '../config.js';
 import { logger } from '../logger.js';
-import { getAccessToken } from '../clients/atlassianAuth.js';
+import { atlassianTarget } from '../clients/atlassian.js';
 import { requestWithRetry } from '../clients/http.js';
 import { AppError } from '../utils/errors.js';
 import { AGENT_FILE_TYPES } from './testCase.js';
@@ -17,7 +17,6 @@ import { htmlToText } from './officeText.js';
  * Figma needs FIGMA_TOKEN.
  */
 
-const API_HOST = 'https://api.atlassian.com';
 const FIGMA_API = 'https://api.figma.com/v1';
 const DOWNLOAD_TIMEOUT_MS = 30_000;
 
@@ -76,9 +75,9 @@ export async function fetchJiraIssues(sessionId, ref) {
   if (keys.length === 0) throw badRef('Enter a Jira issue key such as QA-123, or paste the issue link.');
   if (keys.length > SOURCE_LIMITS.issues) throw badRef(`Import at most ${SOURCE_LIMITS.issues} issues at a time.`);
 
-  const { accessToken, cloudIds } = await getAccessToken(sessionId);
-  const base = `${API_HOST}/ex/jira/${cloudIds.jira}/rest/api/3`;
-  const headers = { authorization: `Bearer ${accessToken}`, accept: 'application/json' };
+  const target = await atlassianTarget('jira', sessionId);
+  const base = target.jiraApi;
+  const headers = { authorization: target.auth, accept: 'application/json' };
   const attachments = [];
 
   for (const key of keys) {
@@ -113,7 +112,7 @@ export async function fetchJiraIssues(sessionId, ref) {
     for (const a of files) {
       const file = await download(
         `${base}/attachment/content/${a.id}`,
-        { authorization: `Bearer ${accessToken}` },
+        { authorization: target.auth },
         a.mimeType,
         `${issue.key} – ${a.filename}`,
       );
@@ -137,14 +136,14 @@ export async function fetchConfluencePage(sessionId, ref) {
   const id = parseConfluencePageId(ref);
   if (!id) throw badRef('Paste a Confluence page link (…/pages/12345/…) or the page id.');
 
-  const { accessToken, cloudIds } = await getAccessToken(sessionId);
+  const target = await atlassianTarget('confluence', sessionId);
   const page = await requestWithRetry(
-    `${API_HOST}/ex/confluence/${cloudIds.confluence}/wiki/rest/api/content/${id}?expand=body.storage,space`,
+    `${target.wiki}/rest/api/content/${id}?expand=body.storage,space`,
     {
       system: 'Confluence',
       describe: atlassianDescribe('Confluence'),
       extractMessages: atlassianMessages,
-      headers: { authorization: `Bearer ${accessToken}`, accept: 'application/json' },
+      headers: { authorization: target.auth, accept: 'application/json' },
     },
   );
 

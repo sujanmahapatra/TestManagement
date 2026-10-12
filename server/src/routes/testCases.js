@@ -13,6 +13,7 @@ import { listRequirementSources } from '../domain/requirementSources.js';
 import { AGENT_FILE_TYPES, AGENT_LIMITS, CATEGORIES, LANGUAGES, PRIORITIES } from '../domain/testCase.js';
 import { config } from '../config.js';
 import { availableSources } from '../domain/agentSources.js';
+import { checkJira } from '../domain/jiraCheck.js';
 
 export const testCaseRoutes = Router();
 
@@ -54,6 +55,18 @@ testCaseRoutes.get('/options', (_req, res) => {
       sources: availableSources(),
     },
   });
+});
+
+/**
+ * GET /api/integrations/jira -- checks sign-in, project, issue type and link
+ * type, and says what to fix. Sends nothing to Jira beyond reads.
+ */
+testCaseRoutes.get('/integrations/jira', async (req, res, next) => {
+  try {
+    res.json({ success: true, ...(await checkJira(req.sessionId)) });
+  } catch (err) {
+    next(err);
+  }
 });
 
 /** Kept for compatibility with the earlier single-purpose endpoint. */

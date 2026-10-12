@@ -1,9 +1,7 @@
 import { config } from '../config.js';
-import { getAccessToken } from '../clients/atlassianAuth.js';
+import { atlassianTarget, usesApiToken } from '../clients/atlassian.js';
 import { requestWithRetry } from '../clients/http.js';
 import { datasetLines, hasStepResults, metaLine, stepLines } from '../domain/caseFormat.js';
-
-const API_HOST = 'https://api.atlassian.com';
 
 /** Confluence storage format is XHTML, so every value must be escaped. */
 const esc = (s) =>
@@ -78,7 +76,9 @@ export const confluenceExporter = {
   key: 'confluence',
   label: 'Confluence',
   kind: 'page',
-  auth: 'atlassian',
+  get auth() {
+    return usesApiToken() ? 'token' : 'atlassian';
+  },
   describeTarget: () => `Page in space ${config.confluence.spaceKey}`,
 
   describeRequest: (testCase) => ({
@@ -95,10 +95,10 @@ export const confluenceExporter = {
   }),
 
   async export(testCases, { sessionId }) {
-    const { accessToken, cloudIds } = await getAccessToken(sessionId);
-    const base = `${API_HOST}/ex/confluence/${cloudIds.confluence}/wiki/api/v2`;
+    const target = await atlassianTarget('confluence', sessionId);
+    const base = `${target.wiki}/api/v2`;
     const headers = {
-      authorization: `Bearer ${accessToken}`,
+      authorization: target.auth,
       'content-type': 'application/json',
       accept: 'application/json',
     };

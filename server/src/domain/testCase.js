@@ -108,6 +108,9 @@ export const editedTestCaseSchema = z.object({
   stepResults: z.array(z.string().trim().max(EDIT_LIMITS.line.max)).max(EDIT_LIMITS.steps.max).default([]),
   // Test data the case runs with, one run per row ("Include datasets").
   dataset: datasetSchema.nullable().default(null),
+  // Jira issues this case tests (the stories it was generated from); filing
+  // to Jira links the new issue to each.
+  links: z.array(z.string().trim().regex(/^[A-Z][A-Z0-9_]+-\d+$/, 'Links must be Jira issue keys such as QA-12.')).max(10).default([]),
 });
 
 /**
