@@ -10,6 +10,7 @@ import pinoHttp from 'pino-http';
 import { config } from './config.js';
 import { logger } from './logger.js';
 import { session } from './middleware/session.js';
+import { loginRoutes, requireLogin } from './middleware/login.js';
 import { errorHandler, notFound } from './middleware/errorHandler.js';
 import { authRoutes } from './routes/auth.js';
 import { testCaseRoutes } from './routes/testCases.js';
@@ -45,6 +46,10 @@ app.use(
 );
 
 app.get('/healthz', (_req, res) => res.json({ status: 'ok' }));
+// Sign-in comes first and stays open; everything after it needs the
+// password when APP_PASSWORD is set.
+app.use('/api', loginRoutes);
+app.use(['/api', '/auth'], requireLogin);
 app.use('/auth', authRoutes);
 app.use('/api/agent', agentRoutes);
 app.use('/api/repository', repositoryRoutes);

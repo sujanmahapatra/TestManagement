@@ -22,6 +22,10 @@ services:
         value: excel
       - key: GENERATOR
         value: template
+      # The password people sign in with (at least 8 characters). Leave it
+      # empty and anyone with the link can use the app.
+      - key: APP_PASSWORD
+        sync: false
       # Free AI: create a key at console.groq.com and paste it when asked.
       - key: GROQ_API_KEY
         sync: false

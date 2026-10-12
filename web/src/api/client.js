@@ -37,6 +37,8 @@ async function send(path, { method = 'GET', body } = {}) {
 /** Turns a non-2xx response into an ApiError using the service's envelope. */
 async function raise(res) {
   const payload = await res.json().catch(() => ({}));
+  // Signed out (or the login expired): the app swaps to the sign-in page.
+  if (payload.code === 'login_required') window.dispatchEvent(new Event('tm:login-required'));
   throw new ApiError(payload.error ?? `Request failed (${res.status}).`, {
     code: payload.code,
     fieldErrors: payload.fieldErrors,
@@ -167,6 +169,9 @@ const repository = {
 };
 
 export const api = {
+  session: () => request('/api/session'),
+  login: (password) => request('/api/login', { method: 'POST', body: { password } }),
+  signOut: () => request('/api/logout', { method: 'POST' }),
   repository,
   checkJira: () => request('/api/integrations/jira'),
   runAgent,

@@ -505,6 +505,13 @@ a validation failure:
 
 ## Security notes
 
+- **Shared password (`APP_PASSWORD`).** When set, every API route except
+  `/healthz` and sign-in itself needs a login. Signing in sets an HttpOnly
+  cookie (Secure in production) holding an expiry and an HMAC keyed by the
+  password. The password is never stored or sent back, a login lasts 30 days,
+  and changing the password signs everyone out. Wrong guesses are limited to
+  5 a minute per client. Unset, the app is open to anyone with its address.
+
 - **Validation on both sides.** `server/src/domain/testCase.js` is the
   authority and re-validates every request; the client mirror exists only
   for instant feedback.

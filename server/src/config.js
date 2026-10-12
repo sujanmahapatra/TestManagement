@@ -92,6 +92,8 @@ const schema = z.object({
   logLevel: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   isProduction: z.boolean(),
   destinations: z.array(z.enum(DESTINATION_KEYS)).min(1, 'At least one destination must be enabled'),
+  // A shared password in front of the app. Unset: open to anyone with the link.
+  appPassword: z.string().min(8, 'APP_PASSWORD must be at least 8 characters').optional(),
   generator: z.object({
     strategy: z.enum(['template', 'llm']).default('template'),
     apiKey: z.string().optional(),
@@ -174,6 +176,7 @@ function load() {
     corsOrigin: process.env.CORS_ORIGIN,
     logLevel: process.env.LOG_LEVEL,
     isProduction: process.env.NODE_ENV === 'production',
+    appPassword: process.env.APP_PASSWORD || undefined,
     destinations,
     generator: (() => {
       const baseUrl = process.env.ANTHROPIC_BASE_URL || undefined;

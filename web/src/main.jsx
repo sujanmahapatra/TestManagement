@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { CssBaseline, GlobalStyles, ThemeProvider } from '@mui/material';
 import TestManagement from './tm/TestManagement';
+import SignInGate from './tm/SignIn';
 import { cssVariables } from './theme';
 import { tmTheme, tmVariables, TM } from './tm/theme';
 
@@ -20,7 +21,7 @@ createRoot(document.getElementById('root')).render(
           body: { backgroundColor: TM.ground, WebkitFontSmoothing: 'antialiased' },
         }}
       />
-      <TestManagement />
+      <SignInGate>{({ signOut }) => <TestManagement onSignOut={signOut} />}</SignInGate>
     </ThemeProvider>
   </StrictMode>,
 );

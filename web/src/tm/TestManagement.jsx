@@ -50,7 +50,7 @@ const TOAST_TONE = {
  * session, the repository and the agent -- so a generation keeps running
  * while the reviewer moves around.
  */
-export default function TestManagement() {
+export default function TestManagement({ onSignOut }) {
   const [options, setOptions] = useState(NO_OPTIONS);
   const [auth, setAuth] = useState(null);
   const [page, setPage] = useState('cases');
@@ -184,6 +184,11 @@ export default function TestManagement() {
             <Box sx={{ fontSize: 12.5, color: '#fbbf24', display: { xs: 'none', md: 'block' } }}>AI is off: set ANTHROPIC_API_KEY</Box>
           )}
           <JiraStatus enabled={options.destinations.some((d) => d.key === 'jira')} />
+          {onSignOut && (
+            <Button size="small" onClick={onSignOut} sx={{ color: '#cbd5e1', minWidth: 0, '&:hover': { bgcolor: '#1e293b' } }}>
+              Sign out
+            </Button>
+          )}
           {atlassian &&
             (auth?.connected ? (
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, fontSize: 13, color: '#cbd5e1' }}>
