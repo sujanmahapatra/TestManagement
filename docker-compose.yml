@@ -1,0 +1,13 @@
+services:
+  api:
+    build: ./server
+    ports:
+      - '4000:4000'
+    # env_file keeps secrets out of this committed file and out of image
+    # layers. In production, prefer injecting these from a secret manager.
+    env_file:
+      - ./server/.env
+    environment:
+      NODE_ENV: production
+      PORT: '4000'
+    restart: unless-stopped

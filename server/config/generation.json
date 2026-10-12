@@ -1,0 +1,147 @@
+{
+  "platforms": {
+    "mobile": {
+      "label": "Mobile",
+      "preconditions": [
+        "A physical device or emulator is available on a supported OS version.",
+        "The latest build of the app is installed and launched for the first time.",
+        "The test account is logged in and network connectivity is stable."
+      ],
+      "launchStep": "Launch the app on the target device and wait for the home screen to load.",
+      "environments": ["iOS (latest and latest-1)", "Android (latest and latest-1)"],
+      "checks": [
+        "Confirm the component renders correctly in both portrait and landscape orientation.",
+        "Confirm touch targets are at least 44x44 points and respond to a single tap."
+      ]
+    },
+    "web": {
+      "label": "Web",
+      "preconditions": [
+        "The application is deployed to the target environment and reachable.",
+        "A supported browser is open with cache and cookies cleared.",
+        "The test account has the permissions needed to reach the component."
+      ],
+      "launchStep": "Open the application URL in a supported browser and sign in as the test user.",
+      "environments": ["Chrome (latest)", "Firefox (latest)", "Safari (latest)", "Edge (latest)"],
+      "checks": [
+        "Confirm the component is reachable by keyboard navigation and exposes an accessible name.",
+        "Confirm the layout holds at 1920px, 1366px and 375px viewport widths."
+      ]
+    },
+    "desktop": {
+      "label": "Desktop",
+      "preconditions": [
+        "The desktop client is installed on a supported OS build.",
+        "The application is started from a clean user profile.",
+        "The test account is signed in with default preferences applied."
+      ],
+      "launchStep": "Start the desktop client and wait for the main window to finish loading.",
+      "environments": ["Windows 11", "macOS (latest)"],
+      "checks": [
+        "Confirm the component behaves correctly when the window is resized and maximised.",
+        "Confirm the documented keyboard shortcuts and focus order work as specified."
+      ]
+    },
+    "tablet": {
+      "label": "Tablet",
+      "preconditions": [
+        "A tablet or tablet emulator is available on a supported OS version.",
+        "The latest build is installed and the app has completed first-run setup.",
+        "The test account is logged in with the default workspace selected."
+      ],
+      "launchStep": "Open the app on the tablet and wait for the primary screen to settle.",
+      "environments": ["iPadOS (latest)", "Android tablet (latest)"],
+      "checks": [
+        "Confirm split-view and multi-window layouts render without clipping.",
+        "Confirm the component responds to both touch and an attached keyboard."
+      ]
+    },
+    "api": {
+      "label": "API",
+      "preconditions": [
+        "The service is deployed to the target environment and the base URL is known.",
+        "A valid API credential with the required scope is available.",
+        "Test data fixtures are seeded and the database is in a known state."
+      ],
+      "launchStep": "Authenticate against the service and confirm a 200 from the health endpoint.",
+      "environments": ["Staging", "Pre-production"],
+      "checks": [
+        "Confirm the response schema matches the published contract, including field types.",
+        "Confirm the status code, content-type and any pagination headers are correct."
+      ]
+    }
+  },
+
+  "testTypes": {
+    "smoke": {
+      "label": "Smoke",
+      "description": "Critical path only — does the component work at all?",
+      "includePlatformChecks": false,
+      "assertions": [
+        "The component loads without error and the primary action completes."
+      ]
+    },
+    "regression": {
+      "label": "Regression",
+      "description": "Full pass, including platform-specific checks.",
+      "includePlatformChecks": true,
+      "assertions": [
+        "No console errors, crashes, or unhandled exceptions are produced during the run."
+      ]
+    },
+    "negative": {
+      "label": "Negative",
+      "description": "Error handling and rejection paths.",
+      "includePlatformChecks": false,
+      "impliesNegativeVariants": true,
+      "assertions": [
+        "The failure is surfaced to the user in plain language, not a raw error code.",
+        "The component recovers to a usable state once the failure is dismissed."
+      ]
+    },
+    "boundary": {
+      "label": "Boundary",
+      "description": "Limits, empty states and overlong input.",
+      "includePlatformChecks": false,
+      "extraSteps": [
+        "Repeat the action with the minimum permitted value, then the maximum permitted value.",
+        "Repeat the action with an empty value and with a value one character over the limit."
+      ],
+      "assertions": [
+        "Values at the minimum and maximum limits are accepted without truncation.",
+        "Values beyond the limit are rejected before submission, with the limit stated.",
+        "Empty input is rejected without discarding the rest of the form."
+      ]
+    }
+  },
+
+  "negativeVariants": [
+    {
+      "key": "invalid-input",
+      "label": "invalid input",
+      "stepSuffix": "using invalid data that fails validation",
+      "assertions": [
+        "A validation message identifies the offending field and states what is required.",
+        "The action is not submitted and no partial state is persisted."
+      ]
+    },
+    {
+      "key": "interrupted",
+      "label": "interrupted",
+      "stepSuffix": "then cancel or navigate away before the action completes",
+      "assertions": [
+        "The in-flight action is abandoned cleanly with no orphaned record created.",
+        "Returning to the component shows the pre-action state, not a stale loading indicator."
+      ]
+    },
+    {
+      "key": "backend-failure",
+      "label": "backend failure",
+      "stepSuffix": "while the backend is returning an error or is unreachable",
+      "assertions": [
+        "The failure is reported without losing the data the user already entered.",
+        "A retry is offered and succeeds once the backend recovers."
+      ]
+    }
+  ]
+}

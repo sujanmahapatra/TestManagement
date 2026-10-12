@@ -1,0 +1,35 @@
+# Render Blueprint: one web service that builds the web app and serves it
+# from the API, so the whole tool lives on one https address.
+#
+# Render dashboard -> New -> Blueprint -> pick this repository. It asks for
+# the values marked `sync: false` (secrets are never stored in this file).
+services:
+  - type: web
+    name: test-management
+    runtime: node
+    plan: free
+    buildCommand: cd web && npm ci && npm run build && cd ../server && npm ci --omit=dev
+    startCommand: cd server && node src/index.js
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "22.12.0"
+      - key: NODE_ENV
+        value: production
+      - key: DESTINATIONS
+        value: excel
+      - key: GENERATOR
+        value: template
+      # Free AI: create a key at console.groq.com and paste it when asked.
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+    # The free plan's disk is wiped whenever the service restarts or sleeps
+    # (after 15 idle minutes), taking saved test cases with it. To keep them,
+    # switch `plan` to starter and uncomment:
+    # disk:
+    #   name: repository
+    #   mountPath: /var/data
+    #   sizeGB: 1
+    # and add an env var REPOSITORY_PATH=/var/data/repository.json
