@@ -4,6 +4,7 @@ import {
   AiBadge,
   ChevronDown,
   ChevronRight,
+  DownloadIcon,
   ExportIcon,
   FolderIcon,
   MoreIcon,
@@ -331,13 +332,13 @@ export default function RepositoryPage({ repo, options, folderId, onFolderChange
             <Box component="h1" sx={{ m: 0, fontSize: 22, fontWeight: 600, color: 'var(--tm-ink)', letterSpacing: '-.01em' }}>Test Cases</Box>
             <Box sx={{ ml: 'auto', display: 'flex', gap: 1, alignItems: 'center' }}>
               <IconButton
-                aria-label="Export test cases"
-                title={chosen.length ? `Export ${chosen.length} selected` : 'Export this folder'}
-                onClick={(e) => setExportAnchor(e.currentTarget)}
-                disabled={rows.length === 0}
+                aria-label={chosen.length ? `Download ${chosen.length} selected test cases as Excel` : 'Download this folder as Excel'}
+                title={chosen.length ? `Download ${chosen.length} selected as Excel` : 'Download this folder as Excel'}
+                onClick={() => onExport('excel', chosen.length ? chosen : rows)}
+                disabled={rows.length === 0 || !options.destinations.some((d) => d.key === 'excel')}
                 sx={{ border: '1px solid var(--tm-rule-strong)', borderRadius: '6px', p: '7px', color: 'var(--tm-ink-soft)' }}
               >
-                <ExportIcon size={17} />
+                <DownloadIcon size={17} />
               </IconButton>
               <Button variant="outlined" onClick={() => setCreating(blankCase(options))} disabled={!folder}>
                 Create Test Case

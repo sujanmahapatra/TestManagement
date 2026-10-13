@@ -137,6 +137,11 @@ export const ExportIcon = (p) => (
     <path d="M10 12.5V3M6.5 6.5L10 3l3.5 3.5M4 11v4.5a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V11" />
   </Svg>
 );
+export const DownloadIcon = (p) => (
+  <Svg {...p}>
+    <path d="M10 3v9.5M6.5 9L10 12.5 13.5 9M4 13v2.5a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V13" />
+  </Svg>
+);
 export const ListIcon = (p) => (
   <Svg {...p}>
     <path d="M7.5 5.5h9M7.5 10h9M7.5 14.5h9" />
