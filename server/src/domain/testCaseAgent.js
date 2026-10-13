@@ -59,6 +59,14 @@ const CaseOut = z.object({
 });
 
 const AgentOut = z.object({
+  analysis: z
+    .object({
+      artifacts: z
+        .array(z.object({ name: z.string(), findings: z.array(z.string()) }))
+        .describe('Per input (each attachment, and "Prompt"): the functional and non-functional requirements found in it, one short line each.'),
+      coreRequirements: z.array(z.string()).describe('The consolidated core feature requirements across all inputs, one short line each.'),
+    })
+    .describe('A brief analysis shown to the reviewer as the steps you took. Keep it short: at most 6 findings per artifact and 8 core requirements.'),
   summary: z.string().describe('What the requirement covers and how the suite tests it, in two to four sentences.'),
   assumptions: z.array(z.string()).describe('Ambiguities in the requirement and what was assumed for each.'),
   gaps: z
@@ -81,9 +89,9 @@ const SYSTEM = `You are a senior QA engineer working as a test case generation a
 
 How to work:
 1. Analyse the requirement. Identify the features, user flows, business rules, inputs and their constraints, states, roles, dependencies and risks it describes. Requirements are often fragmented or vague; work from every source given -- documents, design structure, screenshots, tickets -- together.
-2. Group the test cases into scenarios: one flow-based scenario per user flow for functional cases, and every non-functional case (performance, security, accessibility, compatibility, reliability) together in one scenario named "Non-functional requirements".
+2. Group the test cases into scenarios: one flow-based scenario per user flow for functional cases, and every non-functional case (performance, security, accessibility, compatibility, reliability) together in one scenario named "Non-functional requirements". A scenario is a whole user flow, not a single check: it holds every case for that flow -- its happy path, negative and edge cases together -- usually 3 to 8 cases. Never make a scenario for one case; fold it into the flow it belongs to.
 3. In each scenario, cover the happy path first, then the negative cases (invalid input, missing permission, failure of a dependency), then the edge cases people miss: boundaries and limits, timing windows, empty and maximum states, repeated or concurrent actions, interrupted flows, other users and devices affected by the action.
-4. Summarise what you understood and covered, list the assumptions you made where the requirement is ambiguous, and list the gaps: what the requirement leaves out that a tester needs.
+4. Record your analysis: per input, the functional and non-functional requirements you found, then the consolidated core requirements. Summarise what you understood and covered, list the assumptions you made where the requirement is ambiguous, and list the gaps: what the requirement leaves out that a tester needs.
 5. When a design's structure is given (layer names, text, components and their properties, interactions), use it: screen and button names, visible text and prototype navigation describe the intended flows.
 
 Test case quality:
@@ -115,6 +123,11 @@ const LANGUAGE_RULE = (language) =>
   language === 'English'
     ? 'Write the test cases in English, whatever language the requirement is in.'
     : `Write every summary, assumption, scenario name, title, description, precondition, step, expected result and dataset value in ${language}, whatever language the requirement is in. Keep \`kind\`, \`priority\`, \`category\` and \`change\` values exactly as listed, in English.`;
+
+// Repeated per request: models given only the system prompt's version tend to
+// make one scenario per case.
+const SCENARIO_RULE =
+  'Scenarios: name each one after a user flow (for example "Delete a message for everyone"), never after a single check, and put all of that flow\'s cases in it -- happy path, negative and edge cases together. Put every non-functional case (performance, security, accessibility, compatibility) in one scenario named "Non-functional requirements". A suite usually has 2 to 7 scenarios; a scenario with only one case is almost always wrong.';
 
 const DATASET_RULE = (datasets) =>
   datasets
@@ -233,6 +246,7 @@ function instructionText(input, platform, inScope, outOfScope, existingTitles) {
     PRIORITY_RULE(input.priorities),
     LANGUAGE_RULE(input.language),
     DATASET_RULE(input.datasets),
+    SCENARIO_RULE,
   ];
   if (existingTitles.length) {
     lines.push(
@@ -450,7 +464,7 @@ const SUBMIT_TOOL = (() => {
  * answer), but follow a JSON example written in the prompt.
  */
 const JSON_SHAPE = `Reply with only one JSON object, no other text, in exactly this shape:
-{"summary":"…","assumptions":["…"],"gaps":["…"],"changeSummary":"","scenarios":[{"name":"…","testCases":[{"ref":"","change":"new","title":"…","description":"…","kind":"positive|negative|edge","priority":"critical|high|medium|low","category":"${CATEGORIES.join('|')}","tags":["…"],"preconditions":["…"],"steps":[{"action":"…","expected":"…"}],"source":{"name":"Prompt","excerpt":"…"},"dataset":{"columns":[],"rows":[]}}]}]}`;
+{"analysis":{"artifacts":[{"name":"…","findings":["…"]}],"coreRequirements":["…"]},"summary":"…","assumptions":["…"],"gaps":["…"],"changeSummary":"","scenarios":[{"name":"…","testCases":[{"ref":"","change":"new","title":"…","description":"…","kind":"positive|negative|edge","priority":"critical|high|medium|low","category":"${CATEGORIES.join('|')}","tags":["…"],"preconditions":["…"],"steps":[{"action":"…","expected":"…"}],"source":{"name":"Prompt","excerpt":"…"},"dataset":{"columns":[],"rows":[]}}]}]}`;
 
 /**
  * Groq: one call through its OpenAI-style API, answered as a message in the
@@ -529,6 +543,7 @@ function withDefaults(raw) {
     summary: '',
     assumptions: [],
     gaps: [],
+    analysis: { artifacts: [], coreRequirements: [], ...(raw?.analysis ?? {}) },
     changeSummary: '',
     ...raw,
     scenarios: (raw?.scenarios ?? []).map((s) => ({ name: '', ...s, testCases: (s?.testCases ?? []).map(kase) })),
@@ -778,6 +793,7 @@ export async function runAgent(input, emit, signal) {
       summary: parsed.summary,
       assumptions: parsed.assumptions,
       gaps: parsed.gaps ?? [],
+      analysis: parsed.analysis ?? { artifacts: [], coreRequirements: [] },
       changeSummary: input.instruction ? parsed.changeSummary : '',
       ...result,
     };

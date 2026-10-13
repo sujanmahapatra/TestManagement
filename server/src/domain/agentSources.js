@@ -20,7 +20,7 @@ import { htmlToText } from './officeText.js';
 const FIGMA_API = 'https://api.figma.com/v1';
 const DOWNLOAD_TIMEOUT_MS = 30_000;
 
-export const SOURCE_LIMITS = { issues: 10, attachmentsPerIssue: 3, frames: 10 };
+export const SOURCE_LIMITS = { issues: 10, attachmentsPerIssue: 3, frames: 20 };
 
 const badRef = (message) => new AppError(message, { status: 422, code: 'validation_failed' });
 
@@ -227,7 +227,7 @@ export function figmaStructure(fileName, frameNodes) {
   return text.length > STRUCTURE_LIMIT ? `${text.slice(0, STRUCTURE_LIMIT)}\n… (structure truncated)` : text;
 }
 
-export async function fetchFigmaFrames(ref) {
+export async function fetchFigmaFrames(ref, frameIds = null) {
   const token = config.agent.figmaToken;
   if (!token) throw badRef('Figma import needs FIGMA_TOKEN on the server.');
   const parsed = parseFigmaUrl(ref);
@@ -263,7 +263,10 @@ export async function fetchFigmaFrames(ref) {
   }
   if (frames.length === 0) throw badRef('No frames were found there. Link to a frame or a page that contains frames.');
 
-  const chosen = frames.slice(0, SOURCE_LIMITS.frames);
+  const chosen = frameIds?.length
+    ? frames.filter((f) => frameIds.includes(f.id)).slice(0, SOURCE_LIMITS.frames)
+    : frames.slice(0, SOURCE_LIMITS.frames);
+  if (chosen.length === 0) throw badRef('None of the chosen frames were found. Choose them again.');
   const ids = chosen.map((f) => f.id).join(',');
   const images = await figma(`/images/${parsed.key}?ids=${encodeURIComponent(ids)}&format=png&scale=1`);
 
@@ -303,9 +306,67 @@ export const availableSources = () => ({
   figma: Boolean(config.agent.figmaToken),
 });
 
-export async function fetchSource(sessionId, { type, ref }) {
+/**
+ * The frames a Figma link offers, with small previews, for the picker. The
+ * first 50 are listed; previews are Figma-hosted images that expire.
+ */
+export async function listFigmaFrames(ref) {
+  const token = config.agent.figmaToken;
+  if (!token) throw badRef('Figma import needs FIGMA_TOKEN on the server.');
+  const parsed = parseFigmaUrl(ref);
+  if (!parsed) throw badRef('Paste a Figma design link (figma.com/design/…).');
+  const headers = { 'x-figma-token': token, accept: 'application/json' };
+  const figma = (p) =>
+    requestWithRetry(`${FIGMA_API}${p}`, {
+      system: 'Figma',
+      describe: (status) =>
+        status === 403
+          ? 'The Figma token cannot open this file. Check it has file read access.'
+          : status === 404
+            ? 'Figma could not find that file or frame. Check the link.'
+            : `Figma returned an error (${status}).`,
+      headers,
+    });
+
+  let fileName;
+  let frames;
+  if (parsed.nodeId) {
+    const res = await figma(`/files/${parsed.key}/nodes?ids=${encodeURIComponent(parsed.nodeId)}&depth=1`);
+    fileName = res.name;
+    const node = res.nodes?.[parsed.nodeId]?.document;
+    if (!node) throw badRef('That frame was not found in the Figma file.');
+    frames = FRAME_TYPES.has(node.type) && node.type !== 'SECTION' ? [node] : (node.children ?? []).filter((c) => FRAME_TYPES.has(c.type));
+  } else {
+    const res = await figma(`/files/${parsed.key}?depth=2`);
+    fileName = res.name;
+    frames = (res.document?.children?.[0]?.children ?? []).filter((c) => FRAME_TYPES.has(c.type));
+  }
+  frames = frames.slice(0, 50);
+  if (frames.length === 0) throw badRef('No frames were found there. Link to a frame or a page that contains frames.');
+
+  let previews = {};
+  try {
+    const ids = frames.map((f) => f.id).join(',');
+    previews = (await figma(`/images/${parsed.key}?ids=${encodeURIComponent(ids)}&format=png&scale=0.25`)).images ?? {};
+  } catch {
+    // Previews are a convenience; the list works without them.
+  }
+  return {
+    fileName,
+    maxSelect: SOURCE_LIMITS.frames,
+    frames: frames.map((f) => ({
+      id: f.id,
+      name: f.name,
+      width: Math.round(f.absoluteBoundingBox?.width ?? 0) || null,
+      height: Math.round(f.absoluteBoundingBox?.height ?? 0) || null,
+      preview: previews[f.id] ?? null,
+    })),
+  };
+}
+
+export async function fetchSource(sessionId, { type, ref, frameIds }) {
   if (type === 'jira') return fetchJiraIssues(sessionId, ref);
   if (type === 'confluence') return fetchConfluencePage(sessionId, ref);
-  if (type === 'figma') return fetchFigmaFrames(ref);
+  if (type === 'figma') return fetchFigmaFrames(ref, frameIds);
   throw badRef('Unknown source type.');
 }

@@ -33,7 +33,7 @@ export const lineSx = {
 
 const ctrlSx = { width: 22, height: 22, fontSize: 13, color: 'var(--muted)', '&:hover': { color: 'var(--ink)' } };
 
-export function EditableList({ title, items, ordered, disabled, onChange }) {
+export function EditableList({ title, items, ordered, disabled, onChange, addLabel }) {
   const setItem = (index, value) => onChange(items.map((v, i) => (i === index ? value : v)));
   const remove = (index) => onChange(items.filter((_, i) => i !== index));
   const add = () => onChange([...items, '']);
@@ -106,7 +106,7 @@ export function EditableList({ title, items, ordered, disabled, onChange }) {
       </Box>
 
       <Button size="small" variant="text" onClick={add} disabled={disabled} sx={{ alignSelf: 'flex-start', ml: '22px', fontSize: 12.5 }}>
-        + Add {ordered ? 'step' : 'line'}
+        + {addLabel ?? `Add ${ordered ? 'step' : 'line'}`}
       </Button>
     </Box>
   );

@@ -92,20 +92,23 @@ export default function TestManagement({ onSignOut }) {
     }
   }, [agent.running, agent.cases.length, wasRunning, wizardOpen, notify]);
 
-  const atlassian = options.destinations.some((d) => d.auth === 'atlassian') || options.agent.sources?.jira || options.agent.sources?.confluence;
+  // Only OAuth needs the browser to connect; an API token signs in on the server.
+  const atlassian = options.destinations.some((d) => d.auth === 'atlassian');
 
   const openGenerator = () => setWizardOpen(true);
 
   const addFromAgent = async ({ folderId: target, subfolders, testCases }) => {
     const payload = testCases.map(({ id, change, ...tc }) => tc);
     const result = await repo.addCases({ folderId: target, subfolders, testCases: payload });
-    if (!result) return false;
-    setWizardOpen(false);
-    agent.reset();
+    if (!result) return null;
+    // The panel stays open: the reviewer can keep refining and adding.
     setFolderId(target);
     setPage('cases');
-    notify({ kind: 'success', message: `Added ${result.added.length} test cases to ${repo.pathOf(target) || 'the folder'}${result.folders.length ? `, in ${result.folders.length} new sub-folders` : ''}.` });
-    return true;
+    notify({
+      kind: 'success',
+      message: `Added ${result.added.length} ${result.added.length === 1 ? 'test case' : 'test cases'} to ${repo.pathOf(target) || 'the folder'}${result.folders.length ? `, in ${result.folders.length} new sub-folders` : ''}.`,
+    });
+    return result;
   };
 
   /** The quick-create bar: the agent writes one case for a title, saved straight to the folder. */

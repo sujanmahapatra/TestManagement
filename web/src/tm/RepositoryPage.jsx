@@ -192,6 +192,8 @@ function QuickCreate({ busy, aiEnabled, onCreate }) {
           borderColor: ai && aiEnabled ? '#ddd6fe' : 'var(--tm-rule-strong)',
           bgcolor: ai && aiEnabled ? 'var(--tm-ai-soft)' : 'var(--tm-surface)',
           color: ai && aiEnabled ? 'var(--tm-ai)' : 'var(--tm-muted)',
+          whiteSpace: 'nowrap',
+          flex: 'none',
           '&:focus-visible': { outline: '2px solid var(--tm-primary)' },
         }}
       >

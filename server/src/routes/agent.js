@@ -5,7 +5,7 @@ import { config } from '../config.js';
 import { logger, scrubText } from '../logger.js';
 import { agentRequestSchema, agentSourceSchema, toFieldErrors } from '../domain/testCase.js';
 import { runAgent } from '../domain/testCaseAgent.js';
-import { fetchSource } from '../domain/agentSources.js';
+import { fetchSource, listFigmaFrames } from '../domain/agentSources.js';
 import { AppError, ValidationError } from '../utils/errors.js';
 
 export const agentRoutes = Router();
@@ -34,6 +34,20 @@ agentRoutes.post('/sources', agentLimiter, async (req, res, next) => {
     const result = await fetchSource(req.sessionId, parsed.data);
     logger.info({ type: parsed.data.type, files: result.attachments.length }, 'agent source fetched');
     res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/agent/sources/figma/frames { ref } -> { fileName, maxSelect, frames: [{ id, name, width, height, preview }] }
+ * The frames a Figma link offers, for the picker; imports nothing.
+ */
+agentRoutes.post('/sources/figma/frames', agentLimiter, async (req, res, next) => {
+  try {
+    const ref = typeof req.body?.ref === 'string' ? req.body.ref.trim().slice(0, 2000) : '';
+    if (!ref) throw new ValidationError({ ref: 'Paste a Figma link.' });
+    res.json({ success: true, ...(await listFigmaFrames(ref)) });
   } catch (err) {
     next(err);
   }

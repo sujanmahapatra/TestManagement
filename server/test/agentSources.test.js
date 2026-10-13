@@ -175,6 +175,44 @@ test("a design's structure lists screens, text, component properties and interac
   assert.match(text, /## Screen: Home/);
 });
 
+/* ---------------- Figma frame picker ---------------- */
+
+test('a Figma link lists its frames with previews, and imports only the chosen ones', async (t) => {
+  const png = Buffer.from('89504e470d0a1a0a', 'hex');
+  const page = {
+    id: '1:2',
+    type: 'CANVAS',
+    children: [
+      { id: '3:1', type: 'FRAME', name: 'Modals', absoluteBoundingBox: { width: 1440, height: 850 } },
+      { id: '3:2', type: 'FRAME', name: 'Report', absoluteBoundingBox: { width: 1440, height: 900 } },
+      { id: '3:3', type: 'TEXT', name: 'Note' },
+    ],
+  };
+  const urls = [];
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    const u = String(url);
+    urls.push(u);
+    const json = (body) => new Response(JSON.stringify(body), { status: 200 });
+    if (u.includes('/nodes?') && u.includes('depth=1')) return json({ name: 'Reports', nodes: { '1:2': { document: page } } });
+    if (u.includes('/nodes?')) return json({ nodes: { '3:2': { document: { ...page.children[1], children: [] } } } });
+    if (u.includes('/images/')) return json({ images: { '3:1': 'https://cdn.figma.test/1.png', '3:2': 'https://cdn.figma.test/2.png' } });
+    return new Response(png, { status: 200 });
+  });
+
+  const { listFigmaFrames } = await import('../src/domain/agentSources.js');
+  const list = await listFigmaFrames('https://www.figma.com/design/KEY1/Reports?node-id=1-2');
+  assert.equal(list.fileName, 'Reports');
+  assert.deepEqual(list.frames.map((f) => [f.name, f.width, f.height, Boolean(f.preview)]), [
+    ['Modals', 1440, 850, true],
+    ['Report', 1440, 900, true],
+  ]);
+  assert.match(urls.find((u) => u.includes('/images/')), /scale=0\.25/);
+
+  const imported = await fetchFigmaFrames('https://www.figma.com/design/KEY1/Reports?node-id=1-2', ['3:2']);
+  assert.equal(imported.label, 'Reports (1 frame)');
+  assert.deepEqual(imported.attachments.map((a) => a.name), ['Figma – Reports – structure.txt', 'Figma – Report.png']);
+});
+
 /* ---------------- Figma fetch ---------------- */
 
 test('a Figma page link renders the frames inside it as PNG attachments', async (t) => {

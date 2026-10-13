@@ -7,14 +7,14 @@ import { TEMPLATE_LABELS } from './SettingsPopover';
 
 const ctrlSx = { width: 24, height: 24, fontSize: 13, color: 'var(--tm-muted)', '&:hover': { color: 'var(--tm-ink)' } };
 
-const Label = ({ children }) => (
+export const Label = ({ children }) => (
   <Box component="h3" sx={{ m: 0, fontSize: 12, fontWeight: 600, color: 'var(--tm-muted)', textTransform: 'uppercase', letterSpacing: '.04em' }}>
     {children}
   </Box>
 );
 
 /** Steps paired with their own expected result, kept index-aligned. */
-function StepsEditor({ steps, results, onChange }) {
+export function StepsEditor({ steps, results, onChange }) {
   const aligned = () => steps.map((_, i) => results[i] ?? '');
   const edit = (index, key, value) => {
     const s = [...steps];
@@ -89,7 +89,7 @@ function StepsEditor({ steps, results, onChange }) {
 }
 
 /** The dataset as an editable grid: one column per variable, one row per run. */
-function DatasetEditor({ dataset, onChange }) {
+export function DatasetEditor({ dataset, onChange }) {
   const { columns, rows } = dataset;
   const setCell = (r, c, value) => onChange({ columns, rows: rows.map((row, i) => (i === r ? row.map((v, j) => (j === c ? value : v)) : row)) });
   const removeRow = (r) => onChange(rows.length > 1 ? { columns, rows: rows.filter((_, i) => i !== r) } : null);
@@ -132,7 +132,7 @@ function DatasetEditor({ dataset, onChange }) {
 }
 
 /** The Jira stories this case tests; filing to Jira links the new issue to each. */
-function LinksEditor({ links, onChange }) {
+export function LinksEditor({ links, onChange }) {
   const [value, setValue] = useState('');
   const key = value.trim().toUpperCase();
   const valid = /^[A-Z][A-Z0-9_]+-\d+$/.test(key);

@@ -21,7 +21,13 @@ import { sweep } from './clients/tokenStore.js';
 const app = express();
 
 app.set('trust proxy', 1);
-app.use(helmet());
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: { 'img-src': ["'self'", 'data:', 'https:'] }, // Figma frame previews
+    },
+  }),
+);
 app.use(
   cors({
     origin: config.corsOrigin,

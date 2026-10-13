@@ -42,6 +42,7 @@ export function useTestCaseAgent({ agentOptions, notify }) {
   // so it does not write them again.
   const [reviews, setReviews] = useState({});
   const [rejectedHistory, setRejectedHistory] = useState([]);
+  const [addedKeys, setAddedKeys] = useState({}); // case id -> repository key, once added
   const fetchedLinks = useRef(new Set());
   const abort = useRef(null);
 
@@ -84,11 +85,11 @@ export function useTestCaseAgent({ agentOptions, notify }) {
    * Resolves to the attachments added (empty on failure).
    */
   const addSource = useCallback(
-    async (type, ref, { quiet = false } = {}) => {
+    async (type, ref, { quiet = false, frameIds } = {}) => {
       setFetching(type);
       setFileErrors([]);
       try {
-        const { label, attachments, skipped } = await api.fetchAgentSource({ type, ref });
+        const { label, attachments, skipped } = await api.fetchAgentSource({ type, ref, frameIds });
         const kept = attachments.map((a) => ({ ...a, origin: type }));
         let added = [];
         setInput((prev) => {
@@ -124,12 +125,12 @@ export function useTestCaseAgent({ agentOptions, notify }) {
       setRunning({ stage: 'analyze', drafted: 0, refining: Boolean(refinement), reasoning: '', context: null, notices: [] });
 
       const files = [...input.files, ...extraFiles.filter((f) => !input.files.some((g) => g.name === f.name && g.size === f.size))];
-      const rejectedNow = cases.filter((tc) => reviews[tc.id] === 'rejected');
-      const kept = cases.filter((tc) => reviews[tc.id] !== 'rejected');
-      const lockedIds = kept.filter((tc) => reviews[tc.id] === 'accepted').map((tc) => tc.id);
+      // Cases already added to a folder are settled: refinements keep them as they are.
+      const lockedIds = cases.filter((tc) => reviews[tc.id] === 'added').map((tc) => tc.id);
+      const editable = cases.filter((tc) => reviews[tc.id] !== 'added');
       // All selected means "everything", which needs no scope.
-      const chosen = kept.filter((tc) => selected.has(tc.id));
-      const scope = refinement && chosen.length > 0 && chosen.length < kept.length ? chosen.map((tc) => tc.id) : [];
+      const chosen = editable.filter((tc) => selected.has(tc.id));
+      const scope = refinement && chosen.length > 0 && chosen.length < editable.length ? chosen.map((tc) => tc.id) : [];
       const allTypes = input.categories.length === (agentOptions?.categories?.length ?? 0);
       const body = {
         platform: input.platform,
@@ -146,10 +147,10 @@ export function useTestCaseAgent({ agentOptions, notify }) {
         ...(refinement && {
           instruction: refinement,
           history,
-          current: kept,
+          current: cases,
           selectedIds: scope,
           lockedIds,
-          rejectedTitles: [...rejectedHistory, ...rejectedNow.map((tc) => tc.title)].slice(-200),
+          rejectedTitles: rejectedHistory.slice(-200),
         }),
       };
 
@@ -181,25 +182,27 @@ export function useTestCaseAgent({ agentOptions, notify }) {
         setCases(answer.testCases);
         // Fresh output starts fully selected; after a scoped refinement only
         // the cases that were selected, or are new, stay selected.
+        const addedIds = new Set(lockedIds);
         setSelected((prev) =>
           refinement && scope.length
-            ? new Set(answer.testCases.filter((tc) => prev.has(tc.id) || tc.change === 'new').map((tc) => tc.id))
-            : new Set(answer.testCases.map((tc) => tc.id)),
+            ? new Set(answer.testCases.filter((tc) => (prev.has(tc.id) || tc.change === 'new') && !addedIds.has(tc.id)).map((tc) => tc.id))
+            : new Set(answer.testCases.filter((tc) => !addedIds.has(tc.id)).map((tc) => tc.id)),
         );
         setHistory((prev) => (refinement ? [...prev, refinement] : []));
-        // Verdicts carry over by id: accepted stay accepted; rejected cases
-        // were left out of the refinement and are remembered by title.
+        // "Added" carries over by id; a fresh run starts the record again.
         const present = new Set(answer.testCases.map((tc) => tc.id));
-        setReviews((prev) =>
-          refinement ? Object.fromEntries(Object.entries(prev).filter(([id, v]) => v === 'accepted' && present.has(id))) : {},
-        );
-        setRejectedHistory((prev) => (refinement ? [...prev, ...rejectedNow.map((tc) => tc.title)] : []));
-        const scenarios = new Set(answer.testCases.map((tc) => tc.scenario ?? '')).size;
+        setReviews((prev) => (refinement ? Object.fromEntries(Object.entries(prev).filter(([id]) => present.has(id))) : {}));
+        if (!refinement) setRejectedHistory([]);
+        const groups = new Map();
+        for (const tc of answer.testCases) groups.set(tc.scenario ?? 'Ungrouped', (groups.get(tc.scenario ?? 'Ungrouped') ?? 0) + 1);
+        const scenarios = groups.size;
         const reply = {
           role: 'ai',
           summary: answer.summary,
           assumptions: answer.assumptions,
           gaps: answer.gaps ?? [],
+          analysis: answer.analysis ?? null,
+          snapshot: [...groups.entries()].map(([name, count]) => ({ name, count })),
           reasoning: live.reasoning,
           context: live.context,
           notices: live.notices,
@@ -272,21 +275,29 @@ export function useTestCaseAgent({ agentOptions, notify }) {
     [],
   );
 
-  /** Accept or reject a case; the same verdict again clears it. Rejecting deselects. */
-  const review = useCallback((id, verdict) => {
-    setReviews((prev) => {
-      const next = { ...prev };
-      if (prev[id] === verdict) delete next[id];
-      else next[id] = verdict;
+/**
+   * Batch reject: the selected cases leave the list, and their titles are
+   * passed to every later refinement so they do not come back.
+   */
+  const rejectSelected = useCallback(() => {
+    const drop = cases.filter((tc) => selected.has(tc.id) && reviews[tc.id] !== 'added');
+    if (drop.length === 0) return 0;
+    const ids = new Set(drop.map((tc) => tc.id));
+    setCases((prev) => prev.filter((tc) => !ids.has(tc.id)));
+    setRejectedHistory((prev) => [...prev, ...drop.map((tc) => tc.title)]);
+    setSelected(new Set());
+    return drop.length;
+  }, [cases, selected, reviews]);
+
+  /** Marks cases as added to a folder: kept in view, deselected, and left alone by refinements. */
+  const markAdded = useCallback((ids, keys = {}) => {
+    setReviews((prev) => ({ ...prev, ...Object.fromEntries(ids.map((id) => [id, 'added'])) }));
+    setAddedKeys((prev) => ({ ...prev, ...keys }));
+    setSelected((prev) => {
+      const next = new Set(prev);
+      ids.forEach((id) => next.delete(id));
       return next;
     });
-    if (verdict === 'rejected') {
-      setSelected((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-    }
   }, []);
 
   const updateCase = useCallback(
@@ -302,6 +313,7 @@ export function useTestCaseAgent({ agentOptions, notify }) {
       setHistory([]);
       setConversation([]);
       setReviews({});
+      setAddedKeys({});
       setRejectedHistory([]);
       setError(null);
       fetchedLinks.current = new Set();
@@ -326,7 +338,9 @@ export function useTestCaseAgent({ agentOptions, notify }) {
     selected,
     toggle,
     reviews,
-    review,
+    addedKeys,
+    rejectSelected,
+    markAdded,
     history,
     conversation,
     generate,

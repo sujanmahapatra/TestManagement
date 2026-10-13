@@ -223,6 +223,16 @@ test('cases generated from a Jira story are linked to it', async () => {
   for (const tc of testCases) assert.equal(editedTestCaseSchema.safeParse(tc).success, true);
 });
 
+test('the analysis behind the suite comes back for the thinking steps', async () => {
+  const analysis = {
+    artifacts: [{ name: 'prd.pdf', findings: ['Delete for everyone within 2 hours', 'Deletion syncs across devices within 5 s'] }],
+    coreRequirements: ['Delete for me and for everyone', 'Placeholder shown to recipients'],
+  };
+  setAgentClient(stubClient(answer([{ name: 'Delete', testCases: [modelCase()] }], { analysis })).client);
+  const result = await runAgent(BASE, () => {});
+  assert.deepEqual(result.analysis, analysis);
+});
+
 test('BDD cases take their assertions from the Then lines', async () => {
   const { client } = stubClient(
     answer([
