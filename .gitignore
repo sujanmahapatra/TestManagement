@@ -8,3 +8,9 @@ dist/
 
 # Saved test case repository (local data)
 server/data/
+
+# Python evaluation environment
+.venv/
+__pycache__/
+.pytest_cache/
+.deepeval/

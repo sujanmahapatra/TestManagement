@@ -1,0 +1,49 @@
+[
+  {
+    "name": "login-otp",
+    "platform": "web",
+    "testType": "regression",
+    "prompt": "Feature: Login with one-time password (OTP)\n\nAs a registered user I want to sign in with a code sent to my phone so that I do not need a password.\n\nRequirements:\n1. The user enters a registered 10-digit mobile number and taps \"Send OTP\".\n2. A 6-digit OTP is sent by SMS and is valid for 5 minutes.\n3. Entering the correct OTP signs the user in and opens the dashboard.\n4. An incorrect OTP shows \"Invalid code\"; after 3 wrong attempts the number is locked for 15 minutes.\n5. \"Resend OTP\" is disabled for 30 seconds after each send, and at most 3 resends are allowed per hour.\n6. An unregistered number shows \"No account found for this number\".\n7. An expired OTP shows \"Code expired, request a new one\".",
+    "requirements": [
+      "Send OTP to a registered 10-digit mobile number",
+      "OTP is 6 digits and valid for 5 minutes",
+      "Correct OTP signs in and opens the dashboard",
+      "Incorrect OTP shows 'Invalid code'",
+      "3 wrong attempts lock the number for 15 minutes",
+      "Resend disabled for 30 seconds after each send",
+      "At most 3 resends per hour",
+      "Unregistered number shows 'No account found for this number'",
+      "Expired OTP shows 'Code expired, request a new one'"
+    ]
+  },
+  {
+    "name": "cart-coupon",
+    "platform": "web",
+    "testType": "regression",
+    "prompt": "Feature: Apply a coupon in the shopping cart\n\nRequirements:\n1. The cart has a \"Coupon code\" field and an \"Apply\" button.\n2. A valid code applies its discount and shows the new total and the amount saved.\n3. Codes are case-insensitive.\n4. Only one coupon can be applied per order; applying a second replaces the first.\n5. An expired code shows \"This coupon has expired\".\n6. A code with a minimum order value (for example 500) shows \"Add items worth X more to use this coupon\" when the cart total is below it.\n7. \"Remove\" takes the coupon off and restores the original total.\n8. The discount never makes the total negative.",
+    "requirements": [
+      "Coupon code field and Apply button in the cart",
+      "Valid code applies the discount and shows new total and amount saved",
+      "Codes are case-insensitive",
+      "Only one coupon per order; a second replaces the first",
+      "Expired code shows 'This coupon has expired'",
+      "Minimum order value message when cart total is below it",
+      "Remove restores the original total",
+      "Total never becomes negative"
+    ]
+  },
+  {
+    "name": "profile-photo-mobile",
+    "platform": "mobile",
+    "testType": "regression",
+    "prompt": "Feature: Upload a profile photo (mobile app)\n\nRequirements:\n1. From Profile, the user taps the avatar and chooses \"Take photo\" or \"Choose from gallery\".\n2. The app asks for camera or photo permission the first time; if denied it explains how to enable it in Settings.\n3. Only JPG and PNG up to 5 MB are accepted; other files show \"Use a JPG or PNG under 5 MB\".\n4. The user can crop the image to a square before saving.\n5. After saving, the new photo appears on Profile and in the app header.\n6. If the upload fails (no network), the old photo stays and \"Upload failed, try again\" is shown.",
+    "requirements": [
+      "Take photo or choose from gallery from the avatar",
+      "Permission request on first use and guidance when denied",
+      "Only JPG/PNG up to 5 MB; others show an error",
+      "Square crop before saving",
+      "New photo shown on Profile and in the header",
+      "Failed upload keeps old photo and shows 'Upload failed, try again'"
+    ]
+  }
+]
