@@ -142,6 +142,36 @@ export const DownloadIcon = (p) => (
     <path d="M10 3v9.5M6.5 9L10 12.5 13.5 9M4 13v2.5a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V13" />
   </Svg>
 );
+export const PlugIcon = (p) => (
+  <Svg {...p}>
+    <path d="M7 3v4M13 3v4M5 7h10v3a5 5 0 0 1-10 0zM10 15v3" />
+  </Svg>
+);
+export const BookIcon = (p) => (
+  <Svg {...p}>
+    <path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H16v12H5.5A1.5 1.5 0 0 0 4 16.5zM4 16.5A1.5 1.5 0 0 0 5.5 18H16M7 7h6" />
+  </Svg>
+);
+export const SortIcon = (p) => (
+  <Svg {...p}>
+    <path d="M6 4v12M3.5 13.5L6 16l2.5-2.5M14 16V4M11.5 6.5L14 4l2.5 2.5" />
+  </Svg>
+);
+export const FilterIcon = (p) => (
+  <Svg {...p}>
+    <path d="M3.5 4.5h13l-5 6v5l-3-1.5v-3.5z" />
+  </Svg>
+);
+export const ColumnsIcon = (p) => (
+  <Svg {...p}>
+    <path d="M3 5h14M3 10h14M3 15h14M7 3.5v3M13 8.5v3M9 13.5v3" />
+  </Svg>
+);
+export const FolderPlusIcon = (p) => (
+  <Svg {...p}>
+    <path d="M2.8 5a1 1 0 0 1 1-1h3.7l1.6 1.8h7.1a1 1 0 0 1 1 1V15a1 1 0 0 1-1 1H3.8a1 1 0 0 1-1-1zM10 8.5v5M7.5 11h5" />
+  </Svg>
+);
 export const ListIcon = (p) => (
   <Svg {...p}>
     <path d="M7.5 5.5h9M7.5 10h9M7.5 14.5h9" />

@@ -1,16 +1,21 @@
 import { useMemo, useState } from 'react';
-import { Box, Button, Checkbox, Dialog, DialogActions, DialogContent, IconButton, InputAdornment, Menu, MenuItem, OutlinedInput, Select } from '@mui/material';
+import { Box, Button, Checkbox, Dialog, DialogActions, DialogContent, IconButton, InputAdornment, Menu, MenuItem, OutlinedInput, Popover, Select, Tooltip } from '@mui/material';
 import {
   AiBadge,
   ChevronDown,
   ChevronRight,
+  ColumnsIcon,
   DownloadIcon,
   ExportIcon,
+  FilterIcon,
   FolderIcon,
+  FolderPlusIcon,
+  InfoIcon,
   MoreIcon,
   PlusIcon,
   PriorityIcon,
   SearchIcon,
+  SortIcon,
   SparkleIcon,
   TrashIcon,
 } from './icons';
@@ -45,9 +50,20 @@ function NameDialog({ state, onClose }) {
   );
 }
 
-function FolderTree({ repo, selectedId, onSelect, onMenu }) {
+/** A solid folder, as test management lists show them. */
+const SolidFolder = ({ active }) => (
+  <Box component="svg" viewBox="0 0 20 20" width={17} height={17} aria-hidden sx={{ flex: 'none' }}>
+    <path d="M2.5 5a1.2 1.2 0 0 1 1.2-1.2h3.9l1.7 1.9h7a1.2 1.2 0 0 1 1.2 1.2v8.3a1.2 1.2 0 0 1-1.2 1.2H3.7a1.2 1.2 0 0 1-1.2-1.2z" fill={active ? '#3b82f6' : '#60a5fa'} />
+    <path d="M2.5 7.6h15v-.7a1.2 1.2 0 0 0-1.2-1.2h-7l-1.7-1.9H3.7A1.2 1.2 0 0 0 2.5 5z" fill={active ? '#2563eb' : '#3b82f6'} />
+  </Box>
+);
+
+function FolderTree({ repo, sort, selectedId, onSelect, onMenu }) {
   const [collapsed, setCollapsed] = useState(() => new Set());
-  const children = (parentId) => repo.folders.filter((f) => (f.parentId ?? null) === parentId);
+  const children = (parentId) => {
+    const list = repo.folders.filter((f) => (f.parentId ?? null) === parentId);
+    return sort === 'name' ? [...list].sort((a, b) => a.name.localeCompare(b.name)) : list;
+  };
 
   const render = (parentId, depth) =>
     children(parentId).map((f) => {
@@ -67,7 +83,7 @@ function FolderTree({ repo, selectedId, onSelect, onMenu }) {
               borderRadius: '6px',
               cursor: 'pointer',
               bgcolor: selected ? 'var(--tm-primary-soft)' : 'transparent',
-              color: selected ? 'var(--tm-primary-ink)' : 'var(--tm-ink-soft)',
+              color: selected ? 'var(--tm-primary)' : 'var(--tm-ink-soft)',
               fontWeight: selected ? 500 : 400,
               '&:hover': { bgcolor: selected ? 'var(--tm-primary-soft)' : 'var(--tm-sunken)' },
               '& .tm-more': { opacity: 0 },
@@ -90,7 +106,7 @@ function FolderTree({ repo, selectedId, onSelect, onMenu }) {
             >
               {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             </IconButton>
-            <FolderIcon open={selected} size={17} sx={{ color: selected ? 'var(--tm-primary)' : 'var(--tm-muted)' }} />
+            <SolidFolder active={selected} />
             <Box component="span" sx={{ flex: 1, minWidth: 0, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {f.name}
             </Box>
@@ -164,6 +180,7 @@ export function blankCase(options, title = '') {
 function QuickCreate({ busy, aiEnabled, onCreate }) {
   const [title, setTitle] = useState('');
   const [ai, setAi] = useState(true);
+  const [modeAnchor, setModeAnchor] = useState(null);
   const submit = async (e) => {
     e.preventDefault();
     if (title.trim().length < 5) return;
@@ -174,32 +191,56 @@ function QuickCreate({ busy, aiEnabled, onCreate }) {
       <Box
         component="button"
         type="button"
-        onClick={() => setAi((v) => !v)}
-        aria-pressed={ai && aiEnabled}
-        disabled={!aiEnabled}
-        title={aiEnabled ? 'Let AI write the steps' : 'AI is off on this server'}
+        onClick={(e) => setModeAnchor(e.currentTarget)}
+        aria-haspopup="menu"
+        title={aiEnabled ? 'How the steps are written' : 'AI is off on this server'}
         sx={{
           all: 'unset',
-          cursor: aiEnabled ? 'pointer' : 'not-allowed',
+          cursor: 'pointer',
           display: 'inline-flex',
           alignItems: 'center',
           gap: 0.5,
-          fontSize: 12.5,
+          fontSize: 13,
           fontWeight: 500,
           px: 1,
-          py: '4px',
+          py: '5px',
           borderRadius: '6px',
-          border: '1px solid',
-          borderColor: ai && aiEnabled ? '#ddd6fe' : 'var(--tm-rule-strong)',
-          bgcolor: ai && aiEnabled ? 'var(--tm-ai-soft)' : 'var(--tm-surface)',
-          color: ai && aiEnabled ? 'var(--tm-ai)' : 'var(--tm-muted)',
+          color: 'var(--tm-ink-soft)',
           whiteSpace: 'nowrap',
           flex: 'none',
+          '&:hover': { bgcolor: 'var(--tm-sunken)' },
           '&:focus-visible': { outline: '2px solid var(--tm-primary)' },
         }}
       >
-        <SparkleIcon size={13} /> AI steps
+        {ai && aiEnabled ? 'AI steps' : 'Manual steps'} <ChevronDown size={13} />
       </Box>
+      <Menu anchorEl={modeAnchor} open={Boolean(modeAnchor)} onClose={() => setModeAnchor(null)} disableScrollLock anchorOrigin={{ vertical: 'top', horizontal: 'left' }} transformOrigin={{ vertical: 'bottom', horizontal: 'left' }}>
+        <MenuItem
+          disabled={!aiEnabled}
+          selected={ai && aiEnabled}
+          onClick={() => {
+            setAi(true);
+            setModeAnchor(null);
+          }}
+        >
+          <Box>
+            <Box>AI steps</Box>
+            <Box sx={{ fontSize: 12, color: 'var(--tm-muted)' }}>AI writes the steps, preconditions and results</Box>
+          </Box>
+        </MenuItem>
+        <MenuItem
+          selected={!ai || !aiEnabled}
+          onClick={() => {
+            setAi(false);
+            setModeAnchor(null);
+          }}
+        >
+          <Box>
+            <Box>Manual steps</Box>
+            <Box sx={{ fontSize: 12, color: 'var(--tm-muted)' }}>Opens the case for you to write</Box>
+          </Box>
+        </MenuItem>
+      </Menu>
       <OutlinedInput
         size="small"
         value={title}
@@ -209,7 +250,7 @@ function QuickCreate({ busy, aiEnabled, onCreate }) {
         fullWidth
         inputProps={{ maxLength: 600, 'aria-label': 'New test case title' }}
       />
-      <Button type="submit" variant="text" disabled={busy || title.trim().length < 5} startIcon={busy ? null : <PlusIcon size={15} />} sx={{ flex: 'none' }}>
+      <Button type="submit" variant="text" disabled={busy || title.trim().length < 5} startIcon={busy ? null : ai && aiEnabled ? <SparkleIcon size={14} /> : <PlusIcon size={15} />} sx={{ flex: 'none' }}>
         {busy ? 'Creating…' : 'Create'}
       </Button>
     </Box>
@@ -236,6 +277,13 @@ export default function RepositoryPage({ repo, options, folderId, onFolderChange
   const [rowMenu, setRowMenu] = useState(null); // { anchor, testCase }
   const [creating, setCreating] = useState(null); // a blank case being written by hand
   const [quickBusy, setQuickBusy] = useState(false);
+  const [origin, setOrigin] = useState('all'); // all | ai | manual
+  const [filterAnchor, setFilterAnchor] = useState(null);
+  const [sort, setSort] = useState('custom'); // custom | name
+  const [sortAnchor, setSortAnchor] = useState(null);
+  const [columns, setColumns] = useState(() => new Set()); // optional columns shown
+  const [columnsAnchor, setColumnsAnchor] = useState(null);
+  const activeFilters = (priority !== 'all' ? 1 : 0) + (category !== 'all' ? 1 : 0);
 
   const folder = repo.folders.find((f) => f.id === folderId) ?? repo.folders[0];
   const scope = folder ? repo.descendants[folder.id] : new Set();
@@ -244,11 +292,12 @@ export default function RepositoryPage({ repo, options, folderId, onFolderChange
     const q = search.trim().toLowerCase();
     return repo.cases
       .filter((c) => scope?.has(c.folderId))
+      .filter((c) => origin === 'all' || (origin === 'ai') === (c.generatedBy === 'agent'))
       .filter((c) => priority === 'all' || c.priority === priority)
       .filter((c) => category === 'all' || c.category === category)
       .filter((c) => !q || c.title.toLowerCase().includes(q) || c.key.toLowerCase().includes(q))
       .sort((a, b) => Number(a.key.slice(3)) - Number(b.key.slice(3)));
-  }, [repo.cases, scope, priority, category, search]);
+  }, [repo.cases, scope, origin, priority, category, search]);
 
   const chosen = rows.filter((c) => checked.has(c.id));
   const allChecked = rows.length > 0 && chosen.length === rows.length;
@@ -308,20 +357,21 @@ export default function RepositoryPage({ repo, options, folderId, onFolderChange
     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '268px 1fr' }, height: '100%', minHeight: 0 }}>
       {/* folders */}
       <Box sx={{ display: { xs: 'none', md: 'flex' }, flexDirection: 'column', minHeight: 0, borderRight: '1px solid var(--tm-rule)', bgcolor: 'var(--tm-surface)' }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', px: 2, pt: 2, pb: 1 }}>
-          <Box sx={{ fontSize: 13, fontWeight: 600, color: 'var(--tm-ink)', flex: 1 }}>Folders</Box>
-          <IconButton
-            size="small"
-            aria-label="New folder"
-            title="New folder"
-            onClick={() => setNameDialog({ title: 'New folder', action: 'Create', onSubmit: async (name) => { const f = await repo.createFolder(name, null); if (f) onFolderChange(f.id); } })}
-            sx={{ color: 'var(--tm-muted)', border: '1px solid var(--tm-rule)', borderRadius: '6px', p: '4px' }}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, px: 2, py: 1.25, borderBottom: '1px solid var(--tm-rule)' }}>
+          <Box
+            component="button"
+            type="button"
+            onClick={(e) => setSortAnchor(e.currentTarget)}
+            aria-haspopup="menu"
+            sx={{ all: 'unset', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 0.75, fontSize: 13, color: 'var(--tm-ink-soft)', '&:focus-visible': { outline: '2px solid var(--tm-primary)' } }}
           >
-            <PlusIcon size={15} />
-          </IconButton>
+            <SortIcon size={15} sx={{ color: 'var(--tm-muted)' }} />
+            Sort by: {sort === 'name' ? 'Name' : 'Custom'}
+          </Box>
+          <Box sx={{ ml: 'auto', fontSize: 12.5, color: 'var(--tm-muted)', fontVariantNumeric: 'tabular-nums' }}>({repo.cases.length})</Box>
         </Box>
-        <Box sx={{ flex: 1, overflowY: 'auto', px: 1, pb: 2 }}>
-          <FolderTree repo={repo} selectedId={folder?.id} onSelect={(id) => { onFolderChange(id); setChecked(new Set()); }} onMenu={(anchor, f) => setFolderMenu({ anchor, folder: f })} />
+        <Box sx={{ flex: 1, overflowY: 'auto', px: 1, py: 1 }}>
+          <FolderTree repo={repo} sort={sort} selectedId={folder?.id} onSelect={(id) => { onFolderChange(id); setChecked(new Set()); }} onMenu={(anchor, f) => setFolderMenu({ anchor, folder: f })} />
         </Box>
       </Box>
 
@@ -358,47 +408,121 @@ export default function RepositoryPage({ repo, options, folderId, onFolderChange
         </Box>
 
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', px: 3, pt: 2, pb: 1.5 }}>
-          <OutlinedInput
-            size="small"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by Test Case ID or Title"
-            startAdornment={<InputAdornment position="start"><SearchIcon size={16} sx={{ color: 'var(--tm-faint)' }} /></InputAdornment>}
-            sx={{ width: { xs: '100%', sm: 260 } }}
-            inputProps={{ 'aria-label': 'Search test cases' }}
-          />
-          {filterSelect(priority, setPriority, options.agent.priorities, 'Priority', (p) => (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><PriorityIcon priority={p} /> {PRIORITY_STYLE[p].label}</Box>
-          ))}
-          {filterSelect(category, setCategory, options.agent.categories, 'Type')}
-          {chosen.length > 0 && (
-            <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Box sx={{ fontSize: 13.5, color: 'var(--tm-ink-soft)', mr: 0.5 }}>{chosen.length} selected</Box>
-              <Button variant="outlined" startIcon={<ExportIcon size={16} />} endIcon={<ChevronDown size={14} />} onClick={(e) => setExportAnchor(e.currentTarget)}>
-                Export
-              </Button>
-              <Button
-                variant="outlined"
-                endIcon={<ChevronDown size={14} />}
-                onClick={(e) => {
-                  setMoveIds(chosen.map((c) => c.id));
-                  setMoveAnchor(e.currentTarget);
-                }}
-              >
-                Move
-              </Button>
-              <IconButton aria-label="Delete selected" onClick={removeChosen} sx={{ color: 'var(--tm-bad)', border: '1px solid var(--tm-rule-strong)', borderRadius: '6px', p: '7px' }}>
-                <TrashIcon size={16} />
-              </IconButton>
-            </Box>
-          )}
+          <Select
+            value={origin}
+            onChange={(e) => setOrigin(e.target.value)}
+            input={<OutlinedInput size="small" />}
+            MenuProps={{ disableScrollLock: true }}
+            inputProps={{ 'aria-label': 'Which test cases' }}
+            sx={{ fontSize: 14, minWidth: 170, '& .MuiSelect-select': { py: '6.5px' } }}
+          >
+            <MenuItem value="all">All Test Cases</MenuItem>
+            <MenuItem value="ai">AI generated</MenuItem>
+            <MenuItem value="manual">Created manually</MenuItem>
+          </Select>
+          <IconButton
+            aria-label="New folder"
+            title="New folder"
+            onClick={() => setNameDialog({ title: 'New folder', action: 'Create', onSubmit: async (name) => { const f = await repo.createFolder(name, null); if (f) onFolderChange(f.id); } })}
+            sx={{ border: '1px solid var(--tm-rule-strong)', borderRadius: '6px', p: '7px', color: 'var(--tm-ink-soft)' }}
+          >
+            <FolderPlusIcon size={17} />
+          </IconButton>
+          <Box sx={{ ml: { sm: 'auto' }, display: 'flex', gap: 1, alignItems: 'center', width: { xs: '100%', sm: 'auto' } }}>
+            <OutlinedInput
+              size="small"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by Test Case ID or Title"
+              startAdornment={<InputAdornment position="start"><SearchIcon size={16} sx={{ color: 'var(--tm-faint)' }} /></InputAdornment>}
+              sx={{ width: { xs: '100%', sm: 300 } }}
+              inputProps={{ 'aria-label': 'Search test cases' }}
+            />
+            <IconButton
+              aria-label="Filter test cases"
+              title="Filter"
+              onClick={(e) => setFilterAnchor(e.currentTarget)}
+              sx={{
+                position: 'relative',
+                border: '1px solid',
+                borderColor: activeFilters ? 'var(--tm-primary)' : 'var(--tm-rule-strong)',
+                bgcolor: activeFilters ? 'var(--tm-primary-soft)' : 'transparent',
+                borderRadius: '6px',
+                p: '7px',
+                color: activeFilters ? 'var(--tm-primary)' : 'var(--tm-ink-soft)',
+              }}
+            >
+              <FilterIcon size={17} />
+              {activeFilters > 0 && (
+                <Box component="span" sx={{ position: 'absolute', top: -6, right: -6, minWidth: 16, height: 16, borderRadius: '8px', bgcolor: 'var(--tm-primary)', color: '#fff', fontSize: 10.5, fontWeight: 600, display: 'grid', placeItems: 'center', px: '3px' }}>
+                  {activeFilters}
+                </Box>
+              )}
+            </IconButton>
+          </Box>
         </Box>
 
+        <Popover
+          open={Boolean(filterAnchor)}
+          anchorEl={filterAnchor}
+          onClose={() => setFilterAnchor(null)}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+          transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+          disableScrollLock
+        >
+          <Box sx={{ p: 2, width: 260, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+            <Box sx={{ fontSize: 14, fontWeight: 600 }}>Filters</Box>
+            {filterSelect(priority, setPriority, options.agent.priorities, 'Priority', (p) => (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><PriorityIcon priority={p} /> {PRIORITY_STYLE[p].label}</Box>
+            ))}
+            {filterSelect(category, setCategory, options.agent.categories, 'Type')}
+            <Button
+              size="small"
+              variant="text"
+              disabled={!activeFilters}
+              onClick={() => {
+                setPriority('all');
+                setCategory('all');
+              }}
+              sx={{ alignSelf: 'flex-start' }}
+            >
+              Clear filters
+            </Button>
+          </Box>
+        </Popover>
+
         <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', mx: 3, mb: 3, border: '1px solid var(--tm-rule)', borderRadius: '10px', bgcolor: 'var(--tm-surface)', overflow: 'hidden' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1.25, borderBottom: '1px solid var(--tm-rule)' }}>
-            <FolderIcon open size={17} sx={{ color: 'var(--tm-primary)' }} />
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, px: 2, minHeight: 46, borderBottom: '1px solid var(--tm-rule)', flexWrap: 'wrap' }}>
             <Box sx={{ fontSize: 14.5, fontWeight: 600, color: 'var(--tm-ink)' }}>{folder?.name ?? 'Test cases'}</Box>
-            {folder && <Box sx={{ fontSize: 12.5, color: 'var(--tm-muted)' }}>{repo.pathOf(folder.id)} · {rows.length} {rows.length === 1 ? 'test case' : 'test cases'}</Box>}
+            {folder && (
+              <Tooltip arrow title={`${repo.pathOf(folder.id)} · ${rows.length} ${rows.length === 1 ? 'test case' : 'test cases'}`}>
+                <Box component="span" tabIndex={0} sx={{ display: 'inline-flex', color: 'var(--tm-faint)' }} aria-label="Folder details">
+                  <InfoIcon size={15} />
+                </Box>
+              </Tooltip>
+            )}
+            {chosen.length > 0 && (
+              <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1, py: 0.75 }}>
+                <Box sx={{ fontSize: 13.5, color: 'var(--tm-ink-soft)', mr: 0.5 }}>{chosen.length} selected</Box>
+                <Button size="small" variant="outlined" startIcon={<ExportIcon size={15} />} endIcon={<ChevronDown size={13} />} onClick={(e) => setExportAnchor(e.currentTarget)}>
+                  Export
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  endIcon={<ChevronDown size={13} />}
+                  onClick={(e) => {
+                    setMoveIds(chosen.map((c) => c.id));
+                    setMoveAnchor(e.currentTarget);
+                  }}
+                >
+                  Move
+                </Button>
+                <IconButton aria-label="Delete selected" onClick={removeChosen} sx={{ color: 'var(--tm-bad)', border: '1px solid var(--tm-rule-strong)', borderRadius: '6px', p: '5px' }}>
+                  <TrashIcon size={15} />
+                </IconButton>
+              </Box>
+            )}
           </Box>
           <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
           {rows.length > 0 ? (
@@ -408,13 +532,17 @@ export default function RepositoryPage({ repo, options, folderId, onFolderChange
                   <Box component="th" sx={{ ...th, width: 40 }}>
                     <Checkbox checked={allChecked} indeterminate={chosen.length > 0 && !allChecked} onChange={(e) => setAll(e.target.checked)} sx={{ p: 0 }} inputProps={{ 'aria-label': 'Select all' }} />
                   </Box>
-                  <Box component="th" sx={{ ...th, width: 84 }}>ID</Box>
+                  <Box component="th" sx={{ ...th, width: 96 }}>ID</Box>
                   <Box component="th" sx={th}>Title</Box>
-                  <Box component="th" sx={{ ...th, width: 120 }}>Priority</Box>
-                  <Box component="th" sx={{ ...th, width: 130, display: { xs: 'none', lg: 'table-cell' } }}>Type</Box>
-                  <Box component="th" sx={{ ...th, width: 180, display: { xs: 'none', lg: 'table-cell' } }}>Folder</Box>
-                  <Box component="th" sx={{ ...th, width: 120, display: { xs: 'none', md: 'table-cell' } }}>Updated</Box>
-                  <Box component="th" sx={{ ...th, width: 44 }} aria-label="Actions" />
+                  <Box component="th" sx={{ ...th, width: 130 }}>Priority</Box>
+                  {columns.has('type') && <Box component="th" sx={{ ...th, width: 130 }}>Type</Box>}
+                  {columns.has('folder') && <Box component="th" sx={{ ...th, width: 180 }}>Folder</Box>}
+                  {columns.has('updated') && <Box component="th" sx={{ ...th, width: 120 }}>Updated</Box>}
+                  <Box component="th" sx={{ ...th, width: 44, px: 0.5 }}>
+                    <IconButton size="small" aria-label="Choose columns" title="Choose columns" onClick={(e) => setColumnsAnchor(e.currentTarget)} sx={{ color: 'var(--tm-muted)', border: '1px solid var(--tm-rule)', borderRadius: '6px', p: '3px' }}>
+                      <ColumnsIcon size={15} />
+                    </IconButton>
+                  </Box>
                 </tr>
               </thead>
               <tbody>
@@ -423,7 +551,7 @@ export default function RepositoryPage({ repo, options, folderId, onFolderChange
                     <Box component="td" sx={td} onClick={(e) => e.stopPropagation()}>
                       <Checkbox checked={checked.has(c.id)} onChange={() => toggle(c.id)} sx={{ p: 0 }} inputProps={{ 'aria-label': `Select ${c.key}` }} />
                     </Box>
-                    <Box component="td" sx={{ ...td, color: 'var(--tm-primary)', fontWeight: 500, whiteSpace: 'nowrap' }}>{c.key}</Box>
+                    <Box component="td" sx={{ ...td, color: 'var(--tm-muted)', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{c.key}</Box>
                     <Box component="td" sx={{ ...td, color: 'var(--tm-ink)', maxWidth: 0, width: '100%' }}>
                       <Box sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {c.generatedBy === 'agent' && <SparkleIcon size={13} sx={{ display: 'inline-block', color: 'var(--tm-ai)', mr: 0.75, verticalAlign: '-1px' }} />}
@@ -435,11 +563,13 @@ export default function RepositoryPage({ repo, options, folderId, onFolderChange
                         <PriorityIcon priority={c.priority} /> {PRIORITY_STYLE[c.priority]?.label ?? '—'}
                       </Box>
                     </Box>
-                    <Box component="td" sx={{ ...td, display: { xs: 'none', lg: 'table-cell' } }}>{c.category ?? '—'}</Box>
-                    <Box component="td" sx={{ ...td, display: { xs: 'none', lg: 'table-cell' }, color: 'var(--tm-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 180 }}>
-                      {repo.folders.find((f) => f.id === c.folderId)?.name}
-                    </Box>
-                    <Box component="td" sx={{ ...td, display: { xs: 'none', md: 'table-cell' }, color: 'var(--tm-muted)', whiteSpace: 'nowrap' }}>{formatDate(c.updatedAt)}</Box>
+                    {columns.has('type') && <Box component="td" sx={td}>{c.category ?? '—'}</Box>}
+                    {columns.has('folder') && (
+                      <Box component="td" sx={{ ...td, color: 'var(--tm-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 180 }}>
+                        {repo.folders.find((f) => f.id === c.folderId)?.name}
+                      </Box>
+                    )}
+                    {columns.has('updated') && <Box component="td" sx={{ ...td, color: 'var(--tm-muted)', whiteSpace: 'nowrap' }}>{formatDate(c.updatedAt)}</Box>}
                     <Box component="td" sx={{ ...td, px: 0.5 }} onClick={(e) => e.stopPropagation()}>
                       <IconButton size="small" aria-label={`Actions for ${c.key}`} onClick={(e) => setRowMenu({ anchor: e.currentTarget, testCase: c })} sx={{ color: 'var(--tm-muted)' }}>
                         <MoreIcon size={16} sx={{ transform: 'rotate(90deg)' }} />
@@ -487,6 +617,48 @@ export default function RepositoryPage({ repo, options, folderId, onFolderChange
           )}
         </Box>
       </Box>
+
+      <Menu anchorEl={sortAnchor} open={Boolean(sortAnchor)} onClose={() => setSortAnchor(null)} disableScrollLock>
+        {[
+          ['custom', 'Custom (creation order)'],
+          ['name', 'Name (A–Z)'],
+        ].map(([key, label]) => (
+          <MenuItem
+            key={key}
+            selected={sort === key}
+            onClick={() => {
+              setSort(key);
+              setSortAnchor(null);
+            }}
+          >
+            {label}
+          </MenuItem>
+        ))}
+      </Menu>
+
+      <Menu anchorEl={columnsAnchor} open={Boolean(columnsAnchor)} onClose={() => setColumnsAnchor(null)} disableScrollLock>
+        <Box sx={{ px: 2, pt: 0.5, pb: 1, fontSize: 12, fontWeight: 600, color: 'var(--tm-muted)', textTransform: 'uppercase', letterSpacing: '.04em' }}>Columns</Box>
+        {[
+          ['type', 'Type'],
+          ['folder', 'Folder'],
+          ['updated', 'Updated'],
+        ].map(([key, label]) => (
+          <MenuItem
+            key={key}
+            onClick={() =>
+              setColumns((prev) => {
+                const next = new Set(prev);
+                next.has(key) ? next.delete(key) : next.add(key);
+                return next;
+              })
+            }
+            sx={{ gap: 1 }}
+          >
+            <Checkbox checked={columns.has(key)} sx={{ p: 0 }} tabIndex={-1} />
+            {label}
+          </MenuItem>
+        ))}
+      </Menu>
 
       <Menu anchorEl={folderMenu?.anchor} open={Boolean(folderMenu)} onClose={() => setFolderMenu(null)} disableScrollLock>
         <MenuItem onClick={() => folderAction('sub')}>New sub-folder</MenuItem>

@@ -9,7 +9,8 @@ import ClassicApp from '../App';
 import RepositoryPage from './RepositoryPage';
 import GenerateWizard from './GenerateWizard';
 import JiraStatus from './JiraStatus';
-import { AiBadge, CheckIcon, CloseIcon, ListIcon, WandIcon } from './icons';
+import IntegrationsPage from './IntegrationsPage';
+import { BookIcon, CheckIcon, CloseIcon, ListIcon, PlugIcon, WandIcon } from './icons';
 
 const NO_OPTIONS = {
   destinations: [],
@@ -21,11 +22,46 @@ const NO_OPTIONS = {
 };
 
 const NAV = [
-  { key: 'cases', label: 'Test cases', icon: ListIcon },
-  { key: 'classic', label: 'Quick generator', icon: WandIcon },
+  { key: 'cases', label: 'Test Cases', icon: ListIcon },
+  { key: 'classic', label: 'Quick Generator', icon: WandIcon },
 ];
 
 const classicTheme = buildTheme('light');
+
+/** One entry in the left menu: a page, or a link out. */
+function NavItem({ item, active, onClick, href }) {
+  const Icon = item.icon;
+  return (
+    <Box
+      component={href ? 'a' : 'button'}
+      type={href ? undefined : 'button'}
+      href={href}
+      target={href ? '_blank' : undefined}
+      rel={href ? 'noreferrer' : undefined}
+      onClick={onClick}
+      aria-current={active ? 'page' : undefined}
+      sx={{
+        all: 'unset',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 1.25,
+        px: 1.25,
+        py: 0.9,
+        borderRadius: '6px',
+        cursor: 'pointer',
+        fontSize: 14,
+        fontWeight: active ? 600 : 400,
+        color: active ? 'var(--tm-primary)' : 'var(--tm-ink-soft)',
+        bgcolor: active ? 'var(--tm-primary-soft)' : 'transparent',
+        '&:hover': { bgcolor: active ? 'var(--tm-primary-soft)' : '#eef0f3' },
+        '&:focus-visible': { outline: '2px solid var(--tm-primary)' },
+      }}
+    >
+      <Icon size={17} />
+      {item.label}
+    </Box>
+  );
+}
 
 /** " Linked to QA-7, QA-9." / " 1 link failed (QA-8)." after a Jira export. */
 function linkSummary(items) {
@@ -184,7 +220,7 @@ export default function TestManagement({ onSignOut }) {
         <Box sx={{ fontSize: 13, color: '#94a3b8', borderLeft: '1px solid #334155', pl: 1.5, display: { xs: 'none', sm: 'block' } }}>Default project</Box>
         <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1.5 }}>
           {!options.agent.enabled && (
-            <Box sx={{ fontSize: 12.5, color: '#fbbf24', display: { xs: 'none', md: 'block' } }}>AI is off: set ANTHROPIC_API_KEY</Box>
+            <Box component="button" type="button" onClick={() => setPage('integrations')} sx={{ all: 'unset', cursor: 'pointer', fontSize: 12.5, color: '#fbbf24', display: { xs: 'none', md: 'block' } }}>AI is off — see Integrations</Box>
           )}
           <JiraStatus enabled={options.destinations.some((d) => d.key === 'jira') || options.pausedDestinations?.includes('jira')} />
           {onSignOut && (
@@ -207,57 +243,28 @@ export default function TestManagement({ onSignOut }) {
         </Box>
       </Box>
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '208px 1fr' }, minHeight: 0 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '232px 1fr' }, minHeight: 0 }}>
         {/* navigation */}
-        <Box component="nav" aria-label="Main" sx={{ display: { xs: 'none', sm: 'flex' }, flexDirection: 'column', gap: 0.5, p: 1.25, bgcolor: 'var(--tm-surface)', borderRight: '1px solid var(--tm-rule)' }}>
-          {NAV.map(({ key, label, icon: Icon }) => {
-            const active = page === key;
-            return (
-              <Box
-                key={key}
-                component="button"
-                type="button"
-                onClick={() => setPage(key)}
-                aria-current={active ? 'page' : undefined}
-                sx={{
-                  all: 'unset',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 1.25,
-                  px: 1.25,
-                  py: 1,
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontSize: 14,
-                  fontWeight: active ? 600 : 500,
-                  color: active ? 'var(--tm-primary-ink)' : 'var(--tm-ink-soft)',
-                  bgcolor: active ? 'var(--tm-primary-soft)' : 'transparent',
-                  '&:hover': { bgcolor: active ? 'var(--tm-primary-soft)' : 'var(--tm-sunken)' },
-                  '&:focus-visible': { outline: '2px solid var(--tm-primary)' },
-                }}
-              >
-                <Icon size={18} />
-                {label}
-              </Box>
-            );
-          })}
-          <Box sx={{ mt: 'auto', p: 1.25, borderRadius: '8px', bgcolor: 'var(--tm-ai-soft)', display: 'flex', flexDirection: 'column', gap: 1 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <AiBadge size={22} />
-              <Box sx={{ fontSize: 13, fontWeight: 600 }}>AI test generator</Box>
-            </Box>
-            <Box sx={{ fontSize: 12.5, color: 'var(--tm-muted)' }}>
-              {agent.running ? 'Generating…' : agent.cases.length ? `${agent.cases.length} cases waiting for review.` : 'From PRDs, stories, designs and more.'}
-            </Box>
-            <Button size="small" variant="contained" onClick={openGenerator}>
-              {agent.cases.length || agent.running ? 'Open' : 'Generate'}
-            </Button>
+        <Box component="nav" aria-label="Main" sx={{ display: { xs: 'none', sm: 'flex' }, flexDirection: 'column', gap: 0.25, px: 1.25, py: 1.5, bgcolor: '#f8f9fb', borderRight: '1px solid var(--tm-rule)' }}>
+          <Box sx={{ px: 1.25, pb: 0.75, fontSize: 12, fontWeight: 600, color: 'var(--tm-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>Projects</Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mx: 0.25, mb: 1.5, px: 1, py: 0.75, border: '1px solid var(--tm-rule-strong)', borderRadius: '6px', bgcolor: 'var(--tm-surface)', fontSize: 13.5, color: 'var(--tm-ink)' }}>
+            <Box sx={{ width: 20, height: 20, borderRadius: '5px', border: '1.5px solid var(--tm-ink-soft)', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700, flex: 'none' }}>+</Box>
+            Default project
+          </Box>
+          {NAV.map((item) => (
+            <NavItem key={item.key} item={item} active={page === item.key} onClick={() => setPage(item.key)} />
+          ))}
+          <Box sx={{ mt: 'auto', pt: 1, borderTop: '1px solid var(--tm-rule)', display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+            <NavItem item={{ key: 'integrations', label: 'Integrations', icon: PlugIcon }} active={page === 'integrations'} onClick={() => setPage('integrations')} />
+            <NavItem item={{ key: 'docs', label: 'View Documentation', icon: BookIcon }} href="https://github.com/sujanmahapatra/TestManagement#readme" />
           </Box>
         </Box>
 
         {/* page */}
-        <Box component="main" sx={{ minHeight: 0, minWidth: 0, overflow: page === 'classic' ? 'auto' : 'hidden' }}>
-          {page === 'cases' ? (
+        <Box component="main" sx={{ minHeight: 0, minWidth: 0, overflow: page === 'classic' ? 'auto' : 'hidden', bgcolor: 'var(--tm-surface)' }}>
+          {page === 'integrations' ? (
+            <IntegrationsPage options={options} />
+          ) : page === 'cases' ? (
             <RepositoryPage
               repo={repo}
               options={options}

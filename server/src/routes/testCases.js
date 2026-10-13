@@ -44,6 +44,9 @@ testCaseRoutes.get('/options', (_req, res) => {
     generator: activeStrategy(),
     agent: {
       enabled: config.agent.enabled,
+      // Which AI answers, for the Integrations page. Never the key.
+      provider: config.generator.provider === 'groq' ? 'Groq' : config.generator.provider === 'anthropic' ? 'Anthropic (Claude)' : config.generator.local ? 'Local model (Ollama)' : 'Anthropic-compatible endpoint',
+      model: config.generator.model,
       templates: [
         { key: 'steps', label: 'Test cases (steps)' },
         { key: 'text', label: 'Test cases (text)' },
