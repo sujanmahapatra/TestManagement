@@ -646,7 +646,7 @@ export async function runAgent(input, emit, signal) {
   // scanning -- the saved cases most related to this requirement.
   const folderTitles = input.contextFolderIds.length ? await titlesIn(input.contextFolderIds) : [];
   const scan = input.scanRepository
-    ? await relatedCases([input.prompt, ...input.files.map((f) => f.name.replace(/\.[a-z0-9]+$/i, ''))].join(' '))
+    ? await relatedCases([input.prompt, ...input.files.map((f) => f.name.replace(/\.[a-z0-9]+$/i, ''))].join(' '), { projectId: input.projectId })
     : { scanned: 0, related: [] };
   const existingTitles = [...new Set([...folderTitles, ...scan.related])].slice(0, 200);
   emit({

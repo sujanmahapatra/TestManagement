@@ -312,6 +312,8 @@ export const agentRequestSchema = z
     contextFolderIds: z.array(z.string().max(40)).max(20).default([]),
     // Look through every saved case for related ones, as extra context.
     scanRepository: z.boolean().default(true),
+    // The project whose saved cases are scanned; all projects when absent.
+    projectId: z.string().max(40).optional(),
     // Refinement: accepted cases are kept as they are; rejected ones must not come back.
     lockedIds: z.array(z.string().max(40)).max(EDIT_LIMITS.cases.max).default([]),
     rejectedTitles: z.array(z.string().max(600)).max(200).default([]),
@@ -344,7 +346,12 @@ export const repositoryCaseSchema = editedTestCaseSchema.extend({
   generatedBy: z.string().max(40).optional(),
 });
 
-export const createFolderSchema = z.object({ name: folderName, parentId: z.string().max(40).nullable().default(null) });
+export const createFolderSchema = z.object({
+  name: folderName,
+  parentId: z.string().max(40).nullable().default(null),
+  // The project a top-level folder goes in; a subfolder follows its parent.
+  projectId: z.string().max(40).optional(),
+});
 export const renameFolderSchema = z.object({ name: folderName });
 export const renameProjectSchema = z.object({
   name: z.string({ required_error: 'Name the project.' }).trim().min(1, 'Name the project.').max(80, 'Keep the project name under 80 characters.'),

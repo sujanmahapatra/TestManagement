@@ -113,13 +113,60 @@ test('saved titles are available to the agent as context', async () => {
   assert.ok(titles.includes('Lockout'));
 });
 
-test('the project has a default name until it is renamed, and the name is saved', async () => {
-  assert.equal((await repo.getRepository()).projectName, 'Default project');
-  await repo.renameProject('Payments App');
-  assert.equal((await repo.getRepository()).projectName, 'Payments App');
-  assert.equal(JSON.parse(readFileSync(process.env.REPOSITORY_PATH, 'utf8')).projectName, 'Payments App');
+test('projects keep their own folders, cases and numbering', async () => {
+  const first = await repo.getRepository();
+  assert.equal(first.projectName, 'Default project');
+  assert.equal(first.projects.length, 1);
+
+  const { project } = await repo.createProject('Payments App');
+  await assert.rejects(repo.createProject('payments app'), /already exists/);
+  const payments = await repo.getRepository(project.id);
+  assert.equal(payments.projectName, 'Payments App');
+  assert.deepEqual(payments.folders.map((f) => f.name), ['Test cases']);
+  assert.equal(payments.cases.length, 0);
+
+  // Numbering starts again in a new project, and the first project is untouched.
+  const { added } = await repo.addCases({ folderId: payments.folders[0].id, subfolders: false, testCases: [CASE] });
+  assert.equal(added[0].key, 'TC-1');
+  assert.equal(added[0].projectId, project.id);
+  assert.equal((await repo.getRepository()).cases.length, first.cases.length);
+  assert.deepEqual((await repo.getRepository()).projects.map((p) => [p.name, p.cases]), [['Default project', first.cases.length], ['Payments App', 1]]);
+
+  // Top-level folders go in the chosen project; cases cannot move across projects.
+  await repo.createFolder({ name: 'Refunds', parentId: null, projectId: project.id });
+  assert.ok((await repo.getRepository(project.id)).folders.some((f) => f.name === 'Refunds'));
+  await assert.rejects(repo.moveCases([added[0].id], first.folders[0].id), /within their project/);
+
+  // The scan can be limited to one project.
+  assert.equal((await repo.relatedCases('Login succeeds', { projectId: project.id })).scanned, 1);
+
+  await repo.renameProject(project.id, 'Payments');
+  assert.equal((await repo.getRepository(project.id)).projectName, 'Payments');
+  assert.deepEqual(await repo.deleteProject(project.id), { removedCases: 1 });
+  await assert.rejects(repo.deleteProject(first.projectId), /at least one project/);
+  assert.equal((await repo.getRepository(project.id)).projectId, first.projectId);
 
   const { renameProjectSchema } = await import('../src/domain/testCase.js');
   assert.equal(renameProjectSchema.safeParse({ name: '   ' }).success, false);
   assert.equal(renameProjectSchema.safeParse({ name: 'x'.repeat(81) }).success, false);
+});
+
+test('a single-project file from before projects becomes the first project', async () => {
+  const { writeFileSync } = await import('node:fs');
+  const old = join(mkdtempSync(join(tmpdir(), 'tcg-old-')), 'repository.json');
+  writeFileSync(old, JSON.stringify({
+    version: 1,
+    seq: 7,
+    projectName: 'Chat',
+    folders: [{ id: 'f_1', name: 'Test cases', parentId: null }],
+    cases: [{ ...CASE, id: 'c_1', key: 'TC-7', folderId: 'f_1' }],
+  }));
+  process.env.REPOSITORY_PATH = old;
+  repo.resetRepositoryCache();
+  const data = await repo.getRepository();
+  assert.equal(data.projectName, 'Chat');
+  assert.equal(data.cases[0].key, 'TC-7');
+  assert.equal(data.folders[0].projectId, data.projectId);
+  const { added } = await repo.addCases({ folderId: 'f_1', subfolders: false, testCases: [CASE] });
+  assert.equal(added[0].key, 'TC-8');
 });

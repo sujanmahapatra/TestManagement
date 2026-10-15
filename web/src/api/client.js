@@ -157,9 +157,12 @@ async function runAgent(body, onEvent, signal) {
 
 /** The saved test case repository: folders and cases. */
 const repository = {
-  get: () => request('/api/repository'),
-  renameProject: (name) => request('/api/repository/project', { method: 'PATCH', body: { name } }),
-  createFolder: (name, parentId = null) => request('/api/repository/folders', { method: 'POST', body: { name, parentId } }),
+  get: (projectId) => request(`/api/repository${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''}`),
+  createProject: (name) => request('/api/repository/projects', { method: 'POST', body: { name } }),
+  renameProject: (id, name) => request(`/api/repository/projects/${encodeURIComponent(id)}`, { method: 'PATCH', body: { name } }),
+  deleteProject: (id) => request(`/api/repository/projects/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  createFolder: (name, parentId = null, projectId) =>
+    request('/api/repository/folders', { method: 'POST', body: { name, parentId, ...(projectId && { projectId }) } }),
   renameFolder: (id, name) => request(`/api/repository/folders/${encodeURIComponent(id)}`, { method: 'PATCH', body: { name } }),
   deleteFolder: (id) => request(`/api/repository/folders/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   addCases: ({ folderId, subfolders, testCases }) =>

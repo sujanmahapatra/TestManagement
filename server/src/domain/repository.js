@@ -6,8 +6,9 @@ import { fileURLToPath } from 'node:url';
 import { AppError } from '../utils/errors.js';
 
 /**
- * The test case repository: folders and the cases filed in them, the way a
- * test management tool keeps them. The agent's "Add" saves approved cases
+ * The test case repository: projects, each with its own folders and the cases
+ * filed in them, the way a test management tool keeps them. Case keys
+ * (TC-1, TC-2, ...) are numbered per project. The agent's "Add" saves approved cases
  * here; from here they are exported to Jira, Azure DevOps, Excel and the rest.
  *
  * Stored as one JSON file, which suits a single-team deployment. Every write
@@ -18,22 +19,36 @@ import { AppError } from '../utils/errors.js';
 const DEFAULT_PATH = fileURLToPath(new URL('../../data/repository.json', import.meta.url));
 const filePath = () => process.env.REPOSITORY_PATH || DEFAULT_PATH;
 
-export const REPOSITORY_LIMITS = { cases: 5000, folders: 500, depth: 6 };
+export const REPOSITORY_LIMITS = { cases: 5000, folders: 500, depth: 6, projects: 50 };
 
-/** The name shown until someone renames the project; PROJECT_NAME sets it per deployment. */
+/** The first project's name until it is renamed; PROJECT_NAME sets it per deployment. */
 const defaultProjectName = () => process.env.PROJECT_NAME?.trim() || 'Default project';
+const ROOT_FOLDER = 'Test cases';
 
 const now = () => new Date().toISOString();
 const folderId = () => `f_${randomUUID().slice(0, 8)}`;
 const caseId = () => `c_${randomUUID().slice(0, 12)}`;
+const projectId = () => `p_${randomUUID().slice(0, 8)}`;
+
+const newProject = (name) => ({ id: projectId(), name, seq: 0, createdAt: now() });
+const rootFolder = (project) => ({ id: folderId(), name: ROOT_FOLDER, parentId: null, projectId: project.id, createdAt: now() });
 
 function seed() {
-  return {
-    version: 1,
-    seq: 0,
-    folders: [{ id: folderId(), name: 'Test cases', parentId: null, createdAt: now() }],
-    cases: [],
-  };
+  const project = newProject(defaultProjectName());
+  return { version: 2, projects: [project], folders: [rootFolder(project)], cases: [] };
+}
+
+/**
+ * A version 1 file had one implicit project: its folders and cases become the
+ * first project's, keeping their names, keys and numbering.
+ */
+function migrate(data) {
+  if (Array.isArray(data.projects) && data.projects.length) return data;
+  const project = { ...newProject(data.projectName || defaultProjectName()), seq: data.seq ?? 0 };
+  const folders = (data.folders ?? []).map((x) => ({ ...x, projectId: project.id }));
+  const cases = (data.cases ?? []).map((c) => ({ ...c, projectId: project.id }));
+  if (!folders.some((x) => !x.parentId)) folders.push(rootFolder(project));
+  return { version: 2, projects: [project], folders, cases };
 }
 
 let cache = null;
@@ -42,7 +57,7 @@ let queue = Promise.resolve();
 async function load() {
   if (cache) return cache;
   try {
-    cache = JSON.parse(await readFile(filePath(), 'utf8'));
+    cache = migrate(JSON.parse(await readFile(filePath(), 'utf8')));
   } catch (err) {
     if (err.code !== 'ENOENT') throw err;
     cache = seed();
@@ -78,6 +93,12 @@ export const resetRepositoryCache = () => {
 const notFound = (what) => new AppError(`That ${what} no longer exists.`, { status: 404, code: 'not_found' });
 const invalid = (message) => new AppError(message, { status: 422, code: 'validation_failed' });
 
+function requireProject(data, id) {
+  const project = data.projects.find((p) => p.id === id);
+  if (!project) throw notFound('project');
+  return project;
+}
+
 function requireFolder(data, id) {
   const folder = data.folders.find((f) => f.id === id);
   if (!folder) throw notFound('folder');
@@ -108,9 +129,24 @@ function subtree(data, id) {
 
 /* ---------------- reads ---------------- */
 
-export async function getRepository() {
+/**
+ * One project's folders and cases, plus the list of projects to switch
+ * between. An unknown or missing id falls back to the first project.
+ */
+export async function getRepository(id) {
   const data = await load();
-  return { projectName: data.projectName || defaultProjectName(), folders: data.folders, cases: data.cases };
+  const project = data.projects.find((p) => p.id === id) ?? data.projects[0];
+  return {
+    projects: data.projects.map((p) => ({
+      id: p.id,
+      name: p.name,
+      cases: data.cases.filter((c) => c.projectId === p.id).length,
+    })),
+    projectId: project.id,
+    projectName: project.name,
+    folders: data.folders.filter((x) => x.projectId === project.id),
+    cases: data.cases.filter((c) => c.projectId === project.id),
+  };
 }
 
 /** Titles of the cases in these folders (and their subfolders), for the agent's context. */
@@ -138,11 +174,12 @@ const wordsOf = (text) =>
  *
  * @returns {Promise<{ scanned: number, related: string[] }>}
  */
-export async function relatedCases(text, { limit = 60 } = {}) {
+export async function relatedCases(text, { limit = 60, projectId: id } = {}) {
   const data = await load();
+  const pool = id ? data.cases.filter((c) => c.projectId === id) : data.cases;
   const want = wordsOf(text);
-  if (want.size === 0 || data.cases.length === 0) return { scanned: data.cases.length, related: [] };
-  const scored = data.cases
+  if (want.size === 0 || pool.length === 0) return { scanned: pool.length, related: [] };
+  const scored = pool
     .map((c) => {
       const have = wordsOf(`${c.title} ${c.description ?? ''} ${c.scenario ?? ''}`);
       let shared = 0;
@@ -151,29 +188,62 @@ export async function relatedCases(text, { limit = 60 } = {}) {
     })
     .filter((c) => c.score >= 0.5)
     .sort((a, b) => b.score - a.score);
-  return { scanned: data.cases.length, related: [...new Set(scored.map((c) => c.title))].slice(0, limit) };
+  return { scanned: pool.length, related: [...new Set(scored.map((c) => c.title))].slice(0, limit) };
 }
+
+/* ---------------- projects ---------------- */
+
+const sameName = (a, b) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
+/** A new project starts with one top-level folder, like the first one. */
+export const createProject = (name) =>
+  mutate((data) => {
+    if (data.projects.length >= REPOSITORY_LIMITS.projects) throw invalid(`A repository holds at most ${REPOSITORY_LIMITS.projects} projects.`);
+    if (data.projects.some((p) => sameName(p.name, name))) throw invalid('A project with that name already exists.');
+    const project = newProject(name);
+    data.projects.push(project);
+    data.folders.push(rootFolder(project));
+    return { project: { id: project.id, name: project.name, cases: 0 } };
+  });
+
+export const renameProject = (id, name) =>
+  mutate((data) => {
+    const project = requireProject(data, id);
+    if (data.projects.some((p) => p.id !== id && sameName(p.name, name))) throw invalid('A project with that name already exists.');
+    project.name = name;
+    return { project: { id, name } };
+  });
+
+/** Removes a project with all its folders and cases; the last one stays. */
+export const deleteProject = (id) =>
+  mutate((data) => {
+    requireProject(data, id);
+    if (data.projects.length === 1) throw invalid('Keep at least one project.');
+    const removedCases = data.cases.filter((c) => c.projectId === id).length;
+    data.projects = data.projects.filter((p) => p.id !== id);
+    data.folders = data.folders.filter((x) => x.projectId !== id);
+    data.cases = data.cases.filter((c) => c.projectId !== id);
+    return { removedCases };
+  });
 
 /* ---------------- folders ---------------- */
 
-function addFolder(data, name, parentId) {
+/** A subfolder belongs to its parent's project; a top-level one to `project` (default: the first). */
+function addFolder(data, name, parentId, project) {
   if (data.folders.length >= REPOSITORY_LIMITS.folders) throw invalid(`A repository holds at most ${REPOSITORY_LIMITS.folders} folders.`);
+  let owner;
   if (parentId) {
-    requireFolder(data, parentId);
+    owner = requireFolder(data, parentId).projectId;
     if (depthOf(data, parentId) + 1 >= REPOSITORY_LIMITS.depth) throw invalid('Folders nest at most six levels deep.');
+  } else {
+    owner = project ? requireProject(data, project).id : data.projects[0].id;
   }
-  const folder = { id: folderId(), name, parentId: parentId ?? null, createdAt: now() };
+  const folder = { id: folderId(), name, parentId: parentId ?? null, projectId: owner, createdAt: now() };
   data.folders.push(folder);
   return folder;
 }
 
-export const renameProject = (name) =>
-  mutate((data) => {
-    data.projectName = name;
-    return { projectName: name };
-  });
-
-export const createFolder = ({ name, parentId }) => mutate((data) => addFolder(data, name, parentId));
+export const createFolder = ({ name, parentId, projectId: project }) => mutate((data) => addFolder(data, name, parentId, project));
 
 export const renameFolder = (id, name) =>
   mutate((data) => {
@@ -184,10 +254,9 @@ export const renameFolder = (id, name) =>
 
 export const deleteFolder = (id) =>
   mutate((data) => {
-    requireFolder(data, id);
-    if (data.folders.filter((f) => !f.parentId).length === 1 && !data.folders.find((f) => f.id === id).parentId) {
-      throw invalid('Keep at least one top-level folder.');
-    }
+    const folder = requireFolder(data, id);
+    const tops = data.folders.filter((x) => !x.parentId && x.projectId === folder.projectId);
+    if (!folder.parentId && tops.length === 1) throw invalid('Keep at least one top-level folder.');
     const ids = subtree(data, id);
     const removedCases = data.cases.filter((c) => ids.has(c.folderId)).length;
     data.folders = data.folders.filter((f) => !ids.has(f.id));
@@ -204,7 +273,7 @@ export const deleteFolder = (id) =>
  */
 export const addCases = ({ folderId: target, subfolders, testCases }) =>
   mutate((data) => {
-    requireFolder(data, target);
+    const project = requireProject(data, requireFolder(data, target).projectId);
     if (data.cases.length + testCases.length > REPOSITORY_LIMITS.cases) {
       throw invalid(`A repository holds at most ${REPOSITORY_LIMITS.cases} test cases.`);
     }
@@ -220,9 +289,17 @@ export const addCases = ({ folderId: target, subfolders, testCases }) =>
     };
 
     const added = testCases.map((tc) => {
-      data.seq += 1;
+      project.seq += 1;
       const stamp = now();
-      const stored = { ...tc, id: caseId(), key: `TC-${data.seq}`, folderId: folderFor(tc.scenario), createdAt: stamp, updatedAt: stamp };
+      const stored = {
+        ...tc,
+        id: caseId(),
+        key: `TC-${project.seq}`,
+        projectId: project.id,
+        folderId: folderFor(tc.scenario),
+        createdAt: stamp,
+        updatedAt: stamp,
+      };
       data.cases.push(stored);
       return stored;
     });
@@ -234,7 +311,15 @@ export const updateCase = (id, testCase) =>
     const index = data.cases.findIndex((c) => c.id === id);
     if (index < 0) throw notFound('test case');
     const prior = data.cases[index];
-    data.cases[index] = { ...testCase, id, key: prior.key, folderId: prior.folderId, createdAt: prior.createdAt, updatedAt: now() };
+    data.cases[index] = {
+      ...testCase,
+      id,
+      key: prior.key,
+      projectId: prior.projectId,
+      folderId: prior.folderId,
+      createdAt: prior.createdAt,
+      updatedAt: now(),
+    };
     return data.cases[index];
   });
 
@@ -248,8 +333,9 @@ export const deleteCases = (ids) =>
 
 export const moveCases = (ids, target) =>
   mutate((data) => {
-    requireFolder(data, target);
+    const owner = requireFolder(data, target).projectId;
     const move = new Set(ids);
+    if (data.cases.some((c) => move.has(c.id) && c.projectId !== owner)) throw invalid('Test cases can only be moved within their project.');
     let moved = 0;
     for (const c of data.cases) {
       if (move.has(c.id)) {

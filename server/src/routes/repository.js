@@ -13,8 +13,10 @@ import {
 import {
   addCases,
   createFolder,
+  createProject,
   deleteCases,
   deleteFolder,
+  deleteProject,
   getRepository,
   moveCases,
   renameFolder,
@@ -45,11 +47,17 @@ const handle = (fn) => async (req, res, next) => {
   }
 };
 
-/** GET /api/repository -> { projectName, folders, cases } */
-repositoryRoutes.get('/', handle(() => getRepository()));
+/** GET /api/repository?projectId= -> { projects, projectId, projectName, folders, cases } for one project (default: the first) */
+repositoryRoutes.get('/', handle((req) => getRepository(typeof req.query.projectId === 'string' ? req.query.projectId : undefined)));
 
-/** PATCH /api/repository/project { name } -> { projectName } */
-repositoryRoutes.patch('/project', handle((req) => renameProject(parse(renameProjectSchema, req.body).name)));
+/** POST /api/repository/projects { name } -> { project } */
+repositoryRoutes.post('/projects', handle((req) => createProject(parse(renameProjectSchema, req.body).name)));
+
+/** PATCH /api/repository/projects/:id { name } -> { project } */
+repositoryRoutes.patch('/projects/:id', handle((req) => renameProject(req.params.id, parse(renameProjectSchema, req.body).name)));
+
+/** DELETE /api/repository/projects/:id -> { removedCases }; removes its folders and cases too. */
+repositoryRoutes.delete('/projects/:id', handle((req) => deleteProject(req.params.id)));
 
 /** POST /api/repository/folders { name, parentId? } -> { folder } */
 repositoryRoutes.post('/folders', handle(async (req) => ({ folder: await createFolder(parse(createFolderSchema, req.body)) })));

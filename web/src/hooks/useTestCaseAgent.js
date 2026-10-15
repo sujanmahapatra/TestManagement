@@ -27,7 +27,7 @@ const REASONING_KEEP = 6000;
  *
  * `notify` reports outcomes that are not errors of the current step.
  */
-export function useTestCaseAgent({ agentOptions, notify }) {
+export function useTestCaseAgent({ agentOptions, notify, projectId }) {
   const [input, setInput] = useState(() => emptyAgentInput(agentOptions));
   const [fileErrors, setFileErrors] = useState([]);
   const [fetching, setFetching] = useState(null); // the source type being fetched
@@ -148,6 +148,7 @@ export function useTestCaseAgent({ agentOptions, notify }) {
         datasets: input.datasets,
         contextFolderIds: input.contextFolderIds,
         scanRepository: input.scanRepository,
+        ...(projectId && { projectId }),
         ...(refinement && {
           instruction: refinement,
           history,
@@ -241,7 +242,7 @@ export function useTestCaseAgent({ agentOptions, notify }) {
         setRunning(null);
       }
     },
-    [input, history, cases, selected, reviews, rejectedHistory, agentOptions, notify],
+    [input, history, cases, selected, reviews, rejectedHistory, agentOptions, notify, projectId],
   );
 
   /**
