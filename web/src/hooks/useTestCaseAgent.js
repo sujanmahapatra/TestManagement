@@ -27,7 +27,7 @@ const REASONING_KEEP = 6000;
  *
  * `notify` reports outcomes that are not errors of the current step.
  */
-export function useTestCaseAgent({ agentOptions, notify, projectId }) {
+export function useTestCaseAgent({ agentOptions, notify, projectId, repository = true }) {
   const [input, setInput] = useState(() => emptyAgentInput(agentOptions));
   const [fileErrors, setFileErrors] = useState([]);
   const [fetching, setFetching] = useState(null); // the source type being fetched
@@ -146,8 +146,9 @@ export function useTestCaseAgent({ agentOptions, notify, projectId }) {
         priorities: input.priorities,
         language: input.language,
         datasets: input.datasets,
-        contextFolderIds: input.contextFolderIds,
-        scanRepository: input.scanRepository,
+        // Without a repository (generator mode) there are no saved cases to consult.
+        contextFolderIds: repository ? input.contextFolderIds : [],
+        scanRepository: repository && input.scanRepository,
         ...(projectId && { projectId }),
         ...(refinement && {
           instruction: refinement,
@@ -242,7 +243,7 @@ export function useTestCaseAgent({ agentOptions, notify, projectId }) {
         setRunning(null);
       }
     },
-    [input, history, cases, selected, reviews, rejectedHistory, agentOptions, notify, projectId],
+    [input, history, cases, selected, reviews, rejectedHistory, agentOptions, notify, projectId, repository],
   );
 
   /**

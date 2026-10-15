@@ -48,6 +48,10 @@ services:
       # in the app, but the free plan's disk resets, so set it here to keep it.
       - key: PROJECT_NAME
         value: Default project
+      # management: the full test management app. generator: only the AI
+      # generator, exporting to Excel / Jira / Azure DevOps.
+      - key: APP_MODE
+        value: management
       # Optional: import Azure DevOps work items as requirements. The org URL
       # looks like https://dev.azure.com/your-org; the PAT needs Work Items (Read).
       - key: ADO_ORG_URL

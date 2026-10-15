@@ -19,7 +19,7 @@ const hintSeen = () => {
  * as it is typed, so there is nothing to save before adding. "Add Test Case"
  * files just this one to the chosen folder.
  */
-export default function CaseDetailsPane({ testCase, options, files, addedKey, adding, onChange, onAdd, onClose }) {
+export default function CaseDetailsPane({ testCase, options, files, addedKey, adding, onChange, onAdd, onClose, exporting = false }) {
   const [showHint, setShowHint] = useState(() => !hintSeen());
   const set = (patch) => onChange({ ...testCase, ...patch });
   const perStep = testCase.stepResults?.length > 0;
@@ -169,10 +169,10 @@ export default function CaseDetailsPane({ testCase, options, files, addedKey, ad
 
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, px: 2, py: 1.25, borderTop: '1px solid var(--tm-rule)' }}>
         {addedKey ? (
-          <Box sx={{ fontSize: 13.5, color: 'var(--tm-ok)', fontWeight: 500, py: 1 }}>Added as {addedKey}</Box>
+          <Box sx={{ fontSize: 13.5, color: 'var(--tm-ok)', fontWeight: 500, py: 1 }}>{exporting ? 'Exported' : 'Added'} as {addedKey}</Box>
         ) : (
           <Button variant="outlined" onClick={onAdd} disabled={adding}>
-            {adding ? 'Adding…' : 'Add Test Case'}
+            {exporting ? (adding ? 'Exporting…' : 'Export Test Case') : adding ? 'Adding…' : 'Add Test Case'}
           </Button>
         )}
       </Box>

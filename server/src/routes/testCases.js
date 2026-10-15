@@ -42,6 +42,7 @@ testCaseRoutes.get('/options', (_req, res) => {
     negativeVariants: listNegativeVariants(),
     requirementSources: listRequirementSources(),
     generator: activeStrategy(),
+    mode: config.appMode,
     agent: {
       enabled: config.agent.enabled,
       // Which AI answers, for the Integrations page. Never the key.

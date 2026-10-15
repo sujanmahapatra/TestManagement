@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Box, Button, Checkbox, IconButton, Menu, MenuItem, OutlinedInput, Tooltip } from '@mui/material';
+import { Box, Button, Checkbox, IconButton, Menu, MenuItem, OutlinedInput, TextField, Tooltip } from '@mui/material';
 import { CheckIcon, ChevronDown, ChevronRight, CloseIcon, FolderIcon, InfoIcon, PlusIcon, PriorityIcon, SendIcon, SettingsIcon, SparkleIcon } from './icons';
 import { LiveReasoning, StageMark, contextLabel, stageState } from './GenerateProgress';
 import { SourceMark } from './GenerateInput';
@@ -223,7 +223,7 @@ function PastResults({ message }) {
   );
 }
 
-function CaseRow({ testCase, checked, added, active, disabled, onToggle, onView }) {
+function CaseRow({ testCase, checked, added, doneVerb = 'Added', active, disabled, onToggle, onView }) {
   return (
     <Box
       onClick={onView}
@@ -254,7 +254,7 @@ function CaseRow({ testCase, checked, added, active, disabled, onToggle, onView 
       </Box>
       {testCase.change === 'new' && <Pill bg="var(--tm-ok-soft)" color="var(--tm-ok)">New</Pill>}
       {testCase.change === 'edited' && <Pill bg="var(--tm-primary-soft)" color="var(--tm-primary-ink)">Edited</Pill>}
-      {added && <Pill bg="var(--tm-ok-soft)" color="var(--tm-ok)">Added · {added}</Pill>}
+      {added && <Pill bg="var(--tm-ok-soft)" color="var(--tm-ok)">{doneVerb} · {added}</Pill>}
     </Box>
   );
 }
@@ -265,7 +265,7 @@ const Pill = ({ bg, color, children }) => (
   </Box>
 );
 
-function Scenario({ name, items, selected, addedKeys, viewingId, disabled, onToggle, onView }) {
+function Scenario({ name, items, selected, addedKeys, doneVerb, viewingId, disabled, onToggle, onView }) {
   const [open, setOpen] = useState(true);
   const selectable = items.filter((tc) => !addedKeys[tc.id]);
   const count = selectable.filter((tc) => selected.has(tc.id)).length;
@@ -293,6 +293,7 @@ function Scenario({ name, items, selected, addedKeys, viewingId, disabled, onTog
             testCase={tc}
             checked={selected.has(tc.id)}
             added={addedKeys[tc.id]}
+            doneVerb={doneVerb}
             active={viewingId === tc.id}
             disabled={disabled}
             onToggle={(on) => onToggle([tc.id], on)}
@@ -304,7 +305,7 @@ function Scenario({ name, items, selected, addedKeys, viewingId, disabled, onTog
 }
 
 /** The current suite: the result of the latest round, selectable, case by case. */
-function CurrentResults({ agent, viewingId, disabled, onView }) {
+function CurrentResults({ agent, doneVerb, viewingId, disabled, onView }) {
   const [open, setOpen] = useState(true);
   const groups = useMemo(() => groupByScenario(agent.cases), [agent.cases]);
   return (
@@ -319,6 +320,7 @@ function CurrentResults({ agent, viewingId, disabled, onView }) {
               items={g.items}
               selected={agent.selected}
               addedKeys={agent.addedKeys}
+              doneVerb={doneVerb}
               viewingId={viewingId}
               disabled={disabled}
               onToggle={agent.toggle}
@@ -396,7 +398,29 @@ function FolderMenu({ repo, folderId, onFolder, subfolders, onSubfolders }) {
   );
 }
 
-function BatchBar({ agent, repo, folderId, onFolder, subfolders, onSubfolders, adding, onAdd }) {
+/** Where exported cases go, in generator mode: Excel, Jira, Azure DevOps... */
+function DestinationSelect({ targets, value, onChange }) {
+  return (
+    <TextField
+      select
+      size="small"
+      label="Export to"
+      value={value ?? ''}
+      onChange={(e) => onChange(e.target.value)}
+      SelectProps={{ native: true }}
+      sx={{ minWidth: 150, '& .MuiInputBase-root': { fontSize: 13.5 } }}
+    >
+      {targets.map((t) => (
+        <option key={t.key} value={t.key}>
+          {t.label}
+        </option>
+      ))}
+    </TextField>
+  );
+}
+
+function BatchBar({ agent, repo, folderId, onFolder, subfolders, onSubfolders, adding, onAdd, exportTargets, destination, onDestination }) {
+  const exporting = Boolean(exportTargets);
   const selectable = agent.cases.filter((tc) => !agent.addedKeys[tc.id]);
   const chosen = selectable.filter((tc) => agent.selected.has(tc.id));
   const busy = Boolean(agent.running) || adding;
@@ -411,21 +435,27 @@ function BatchBar({ agent, repo, folderId, onFolder, subfolders, onSubfolders, a
         inputProps={{ 'aria-label': 'Select all test cases' }}
       />
       <Box sx={{ fontSize: 13.5, color: 'var(--tm-ink)', fontWeight: 500, mr: 0.5 }}>{chosen.length} test cases selected</Box>
-      <Button variant="contained" size="small" onClick={() => onAdd(chosen)} disabled={busy || chosen.length === 0 || !folderId}>
-        {adding ? 'Adding…' : 'Add'}
+      <Button variant="contained" size="small" onClick={() => onAdd(chosen)} disabled={busy || chosen.length === 0 || (exporting ? !destination : !folderId)}>
+        {exporting ? (adding ? 'Exporting…' : 'Export') : adding ? 'Adding…' : 'Add'}
       </Button>
       <Button variant="outlined" size="small" onClick={agent.rejectSelected} disabled={busy || chosen.length === 0}>
         Reject
       </Button>
       <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 0.5 }}>
-        <FolderMenu repo={repo} folderId={folderId} onFolder={onFolder} subfolders={subfolders} onSubfolders={onSubfolders} />
+        {exporting ? (
+          <DestinationSelect targets={exportTargets} value={destination} onChange={onDestination} />
+        ) : (
+          <FolderMenu repo={repo} folderId={folderId} onFolder={onFolder} subfolders={subfolders} onSubfolders={onSubfolders} />
+        )}
         <Tooltip
           arrow
           placement="top"
           title={
             <Box sx={{ p: 0.5 }}>
               <Box sx={{ fontWeight: 600, mb: 0.25 }}>Batch Actions</Box>
-              Streamline your workflow. Select multiple test cases to add to a folder at once, or reject unwanted ones so they won&apos;t reappear.
+              {exporting
+                ? 'Select test cases to export them together, or reject unwanted ones so they won\'t reappear.'
+                : 'Streamline your workflow. Select multiple test cases to add to a folder at once, or reject unwanted ones so they won\'t reappear.'}
             </Box>
           }
         >
@@ -512,8 +542,9 @@ function RefineBox({ agent, options, repo }) {
         input={agent.input}
         change={agent.change}
         options={options}
-        folders={repo.folders}
-        counts={repo.counts}
+        folders={repo?.folders ?? []}
+        counts={repo?.counts ?? {}}
+        noRepository={!repo}
         templateLocked
       />
     </Box>
@@ -527,7 +558,23 @@ function RefineBox({ agent, options, repo }) {
  * how the agent thought about it, and what it produced -- with the current
  * suite selectable, and batch actions and refinement pinned at the bottom.
  */
-export default function GenerateConversation({ agent, options, repo, folderId, onFolder, subfolders, onSubfolders, adding, onAdd, viewingId, onView }) {
+export default function GenerateConversation({
+  agent,
+  options,
+  repo,
+  folderId,
+  onFolder,
+  subfolders,
+  onSubfolders,
+  adding,
+  onAdd,
+  viewingId,
+  onView,
+  exportTargets,
+  destination,
+  onDestination,
+}) {
+  const doneVerb = exportTargets ? 'Exported' : 'Added';
   const end = useRef(null);
   const turns = agent.conversation;
   const lastAi = turns.map((m) => m.role).lastIndexOf('ai');
@@ -559,7 +606,7 @@ export default function GenerateConversation({ agent, options, repo, folderId, o
               <Thinking message={m} />
               <Findings message={m} />
               {i === lastAi && !(agent.running && agent.running.refining) ? (
-                <CurrentResults agent={agent} viewingId={viewingId} disabled={Boolean(agent.running)} onView={onView} />
+                <CurrentResults agent={agent} doneVerb={doneVerb} viewingId={viewingId} disabled={Boolean(agent.running)} onView={onView} />
               ) : (
                 <PastResults message={m} />
               )}
@@ -589,7 +636,19 @@ export default function GenerateConversation({ agent, options, repo, folderId, o
 
       {agent.cases.length > 0 && (
         <Box sx={{ px: 2, pb: 2, pt: 1, display: 'flex', flexDirection: 'column', gap: 1, borderTop: '1px solid var(--tm-rule)', bgcolor: 'var(--tm-ground)' }}>
-          <BatchBar agent={agent} repo={repo} folderId={folderId} onFolder={onFolder} subfolders={subfolders} onSubfolders={onSubfolders} adding={adding} onAdd={onAdd} />
+          <BatchBar
+            agent={agent}
+            repo={repo}
+            folderId={folderId}
+            onFolder={onFolder}
+            subfolders={subfolders}
+            onSubfolders={onSubfolders}
+            adding={adding}
+            onAdd={onAdd}
+            exportTargets={exportTargets}
+            destination={destination}
+            onDestination={onDestination}
+          />
           <RefineBox agent={agent} options={options} repo={repo} />
         </Box>
       )}

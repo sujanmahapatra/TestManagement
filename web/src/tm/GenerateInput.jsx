@@ -87,7 +87,7 @@ export default function GenerateInput({ agent, options, repo, onConnect }) {
           Share your testing requirements to generate comprehensive test cases.
         </Box>
         <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '4px 16px', mt: 0.75, fontSize: 13.5, color: 'var(--tm-ink-soft)' }}>
-          {['Generate, review & add', 'Refine until it works'].map((t) => (
+          {[repo ? 'Generate, review & add' : 'Generate, review & export', 'Refine until it works'].map((t) => (
             <Box key={t} component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
               <CheckIcon size={15} sx={{ color: 'var(--tm-ink-soft)' }} />
               {t}
@@ -223,8 +223,9 @@ export default function GenerateInput({ agent, options, repo, onConnect }) {
         input={input}
         change={change}
         options={options}
-        folders={repo.folders}
-        counts={repo.counts}
+        folders={repo?.folders ?? []}
+        counts={repo?.counts ?? {}}
+        noRepository={!repo}
         templateLocked={false}
       />
     </Box>

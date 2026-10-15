@@ -109,7 +109,7 @@ const folderTree = (folders) => {
  * language) and general settings (platform, additional context, datasets).
  * Each row opens its choices in a panel beside it.
  */
-export default function SettingsPopover({ anchorEl, open, onClose, input, change, options, folders, counts, templateLocked }) {
+export default function SettingsPopover({ anchorEl, open, onClose, input, change, options, folders, counts, templateLocked, noRepository = false }) {
   const [panel, setPanel] = useState('priority');
   const agent = options.agent;
 
@@ -216,6 +216,8 @@ export default function SettingsPopover({ anchorEl, open, onClose, input, change
           <Box sx={{ borderTop: '1px solid var(--tm-rule)', mt: 0.5 }} />
           <SectionTitle>General settings</SectionTitle>
           <Row label="Platform" value={platform?.label ?? input.platform} active={panel === 'platform'} onOpen={() => setPanel('platform')} />
+          {!noRepository && (
+          <>
           <Row
             label="Additional context"
             info="Folders of saved test cases the agent should know about, so it does not write them again."
@@ -232,6 +234,8 @@ export default function SettingsPopover({ anchorEl, open, onClose, input, change
             <Info text="Look through every saved test case for ones related to this requirement, so the agent covers what is missing instead of repeating what exists." />
             <Switch checked={input.scanRepository} onChange={(e) => change('scanRepository', e.target.checked)} size="small" sx={{ ml: 'auto' }} />
           </Box>
+          </>
+          )}
           <Box
             component="label"
             sx={{ display: 'flex', alignItems: 'center', gap: 0.75, px: 2, py: '6px', fontSize: 14, color: 'var(--tm-ink-soft)', cursor: 'pointer' }}

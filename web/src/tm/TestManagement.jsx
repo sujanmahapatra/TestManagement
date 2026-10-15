@@ -91,7 +91,9 @@ export default function TestManagement({ onSignOut }) {
 
   const notify = useCallback((t) => setToast({ ...t, id: Date.now() }), []);
   const repo = useRepository({ notify });
-  const agent = useTestCaseAgent({ agentOptions: options.agent, notify, projectId: repo.projectId });
+  // APP_MODE=generator: the generator is the whole app, and its cases are exported, not saved.
+  const generatorOnly = options.mode === 'generator';
+  const agent = useTestCaseAgent({ agentOptions: options.agent, notify, projectId: generatorOnly ? undefined : repo.projectId, repository: !generatorOnly });
 
   const refreshAuth = useCallback(() => api.getAuthStatus().then(setAuth).catch(() => setAuth({ connected: false })), []);
 
@@ -189,11 +191,11 @@ export default function TestManagement({ onSignOut }) {
               action: result.url ? { label: 'Open', href: result.url } : null,
             },
       );
-      return true;
+      return result;
     } catch (err) {
       if (err.needsAuth) refreshAuth();
       notify({ kind: 'error', message: err.message, action: err.needsAuth ? { label: 'Connect', onClick: startJiraLogin } : null });
-      return false;
+      return null;
     }
   };
 
@@ -212,8 +214,10 @@ export default function TestManagement({ onSignOut }) {
         <Box sx={{ width: 28, height: 28, borderRadius: '7px', bgcolor: '#2563eb', display: 'grid', placeItems: 'center' }}>
           <CheckIcon size={18} sx={{ strokeWidth: 2.4 }} />
         </Box>
-        <Box sx={{ fontSize: 15, fontWeight: 600, letterSpacing: '-.01em' }}>Test Management</Box>
-        <Box sx={{ fontSize: 13, color: '#94a3b8', borderLeft: '1px solid #334155', pl: 1.5, display: { xs: 'none', sm: 'block' } }}>{repo.projectName || 'Default project'}</Box>
+        <Box sx={{ fontSize: 15, fontWeight: 600, letterSpacing: '-.01em' }}>{generatorOnly ? 'Test Case Generator' : 'Test Management'}</Box>
+        {!generatorOnly && (
+          <Box sx={{ fontSize: 13, color: '#94a3b8', borderLeft: '1px solid #334155', pl: 1.5, display: { xs: 'none', sm: 'block' } }}>{repo.projectName || 'Default project'}</Box>
+        )}
         <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1.5 }}>
           {!options.agent.enabled && (
             <Box component="button" type="button" onClick={() => setPage('integrations')} sx={{ all: 'unset', cursor: 'pointer', fontSize: 12.5, color: '#fbbf24', display: { xs: 'none', md: 'block' } }}>AI is off — see Integrations</Box>
@@ -239,6 +243,28 @@ export default function TestManagement({ onSignOut }) {
         </Box>
       </Box>
 
+      {generatorOnly ? (
+        <Box component="main" sx={{ minHeight: 0, minWidth: 0, overflow: 'hidden', display: 'flex' }}>
+          {page === 'integrations' ? (
+            <Box sx={{ flex: 1, minWidth: 0, bgcolor: 'var(--tm-surface)', overflow: 'auto' }}>
+              <Box sx={{ px: 3, pt: 2 }}>
+                <Button size="small" onClick={() => setPage('cases')}>← Back to the generator</Button>
+              </Box>
+              <IntegrationsPage options={options} />
+            </Box>
+          ) : (
+            <GenerateWizard
+              page
+              agent={agent}
+              options={options}
+              repo={null}
+              onConnect={startJiraLogin}
+              exportTargets={options.destinations.map((d) => ({ key: d.key, label: d.label }))}
+              onExport={exportCases}
+            />
+          )}
+        </Box>
+      ) : (
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '232px 1fr' }, minHeight: 0 }}>
         {/* navigation */}
         <Box component="nav" aria-label="Main" sx={{ display: { xs: 'none', sm: 'flex' }, flexDirection: 'column', gap: 0.25, px: 1.25, py: 1.5, bgcolor: '#f8f9fb', borderRight: '1px solid var(--tm-rule)' }}>
@@ -272,7 +298,9 @@ export default function TestManagement({ onSignOut }) {
           )}
         </Box>
       </Box>
+      )}
 
+      {!generatorOnly && (
       <GenerateWizard
         open={wizardOpen}
         onClose={() => setWizardOpen(false)}
@@ -283,6 +311,7 @@ export default function TestManagement({ onSignOut }) {
         onAdd={addFromAgent}
         onConnect={startJiraLogin}
       />
+      )}
 
       <Snackbar
         key={toast?.id}

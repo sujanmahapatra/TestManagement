@@ -18,6 +18,20 @@ Excel workbook.
 The browser never sees a token. Only the Express service holds credentials,
 and Atlassian access/refresh tokens live in process memory — never on disk.
 
+## Two modes
+
+`APP_MODE` picks what the app is:
+
+- **`management`** (default) — test management with an AI generator:
+  projects (each with its own folders, test cases and TC numbering), a test
+  case list with search, filters and columns, and **Generate with AI**, which
+  adds approved cases to a folder. Saved cases export to Jira, Azure DevOps or
+  Excel.
+- **`generator`** — only the AI generator, as the whole screen. There are no
+  projects, folders or saved list; approved cases are exported straight to
+  Excel, Jira or Azure DevOps (the **Export to** choice beside **Export**),
+  and the agent does not scan saved cases.
+
 ## Generating
 
 A note expands into **one or more** test cases. Three options multiply or
