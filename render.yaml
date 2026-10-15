@@ -13,6 +13,8 @@ services:
     buildCommand: cd web && npm ci --include=dev && npm run build && cd ../server && npm ci --omit=dev
     startCommand: cd server && node src/index.js
     healthCheckPath: /healthz
+    # Deploys are started by hand (Manual Deploy -> Deploy latest commit), not on every push.
+    autoDeploy: false
     envVars:
       - key: NODE_VERSION
         value: "22.12.0"
