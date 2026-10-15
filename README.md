@@ -27,7 +27,9 @@ and Atlassian access/refresh tokens live in process memory — never on disk.
   case list with search, filters and columns, and **Generate with AI**, which
   adds approved cases to a folder. Saved cases export to Jira, Azure DevOps or
   Excel.
-- **`generator`** — only the AI generator, as the whole screen. There are no
+- **`generator`** — only the AI generator, as the whole screen. The same view
+  is always at **`/generator`** (for example
+  `https://your-app.onrender.com/generator`), whatever `APP_MODE` is. There are no
   projects, folders or saved list; approved cases are exported straight to
   Excel, Jira or Azure DevOps (the **Export to** choice beside **Export**),
   and the agent does not scan saved cases.

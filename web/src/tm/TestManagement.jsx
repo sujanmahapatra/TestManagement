@@ -9,7 +9,7 @@ import GenerateWizard from './GenerateWizard';
 import JiraStatus from './JiraStatus';
 import IntegrationsPage from './IntegrationsPage';
 import ProjectSwitcher from './ProjectSwitcher';
-import { BookIcon, CheckIcon, CloseIcon, ListIcon, PlugIcon } from './icons';
+import { BookIcon, CheckIcon, CloseIcon, ListIcon, PlugIcon, SparkleIcon } from './icons';
 
 const NO_OPTIONS = {
   destinations: [],
@@ -91,8 +91,10 @@ export default function TestManagement({ onSignOut }) {
 
   const notify = useCallback((t) => setToast({ ...t, id: Date.now() }), []);
   const repo = useRepository({ notify });
-  // APP_MODE=generator: the generator is the whole app, and its cases are exported, not saved.
-  const generatorOnly = options.mode === 'generator';
+  // APP_MODE=generator, or the /generator address: the generator is the whole
+  // app, and its cases are exported, not saved.
+  const generatorPath = window.location.pathname.replace(/\/+$/, '') === '/generator';
+  const generatorOnly = options.mode === 'generator' || generatorPath;
   const agent = useTestCaseAgent({ agentOptions: options.agent, notify, projectId: generatorOnly ? undefined : repo.projectId, repository: !generatorOnly });
 
   const refreshAuth = useCallback(() => api.getAuthStatus().then(setAuth).catch(() => setAuth({ connected: false })), []);
@@ -222,6 +224,11 @@ export default function TestManagement({ onSignOut }) {
           {!options.agent.enabled && (
             <Box component="button" type="button" onClick={() => setPage('integrations')} sx={{ all: 'unset', cursor: 'pointer', fontSize: 12.5, color: '#fbbf24', display: { xs: 'none', md: 'block' } }}>AI is off — see Integrations</Box>
           )}
+          {generatorPath && options.mode !== 'generator' && (
+            <Button size="small" href="/" sx={{ color: '#cbd5e1', minWidth: 0, '&:hover': { bgcolor: '#1e293b' } }}>
+              Open Test Management
+            </Button>
+          )}
           <JiraStatus enabled={options.destinations.some((d) => d.key === 'jira') || options.pausedDestinations?.includes('jira')} />
           {onSignOut && (
             <Button size="small" onClick={onSignOut} sx={{ color: '#cbd5e1', minWidth: 0, '&:hover': { bgcolor: '#1e293b' } }}>
@@ -275,6 +282,7 @@ export default function TestManagement({ onSignOut }) {
           ))}
           <Box sx={{ mt: 'auto', pt: 1, borderTop: '1px solid var(--tm-rule)', display: 'flex', flexDirection: 'column', gap: 0.25 }}>
             <NavItem item={{ key: 'integrations', label: 'Integrations', icon: PlugIcon }} active={page === 'integrations'} onClick={() => setPage('integrations')} />
+            <NavItem item={{ key: 'generator', label: 'Generator only', icon: SparkleIcon }} href="/generator" />
             <NavItem item={{ key: 'docs', label: 'View Documentation', icon: BookIcon }} href="https://github.com/sujanmahapatra/TestManagement#readme" />
           </Box>
         </Box>
