@@ -3,7 +3,8 @@ import rateLimit from 'express-rate-limit';
 
 import { config } from '../config.js';
 import { logger, scrubText } from '../logger.js';
-import { agentRequestSchema, agentSourceSchema, toFieldErrors } from '../domain/testCase.js';
+import { agentFeedbackSchema, agentRequestSchema, agentSourceSchema, toFieldErrors } from '../domain/testCase.js';
+import { feedbackSummary, saveFeedback } from '../domain/feedback.js';
 import { runAgent } from '../domain/testCaseAgent.js';
 import { fetchSource, listFigmaFrames } from '../domain/agentSources.js';
 import { AppError, ValidationError } from '../utils/errors.js';
@@ -48,6 +49,28 @@ agentRoutes.post('/sources/figma/frames', agentLimiter, async (req, res, next) =
     const ref = typeof req.body?.ref === 'string' ? req.body.ref.trim().slice(0, 2000) : '';
     if (!ref) throw new ValidationError({ ref: 'Paste a Figma link.' });
     res.json({ success: true, ...(await listFigmaFrames(ref)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** POST /api/agent/feedback { rating: 'up' | 'down', comment?, prompt?, summary?, cases?, scenarios? } -> { success } */
+agentRoutes.post('/feedback', async (req, res, next) => {
+  try {
+    const parsed = agentFeedbackSchema.safeParse(req.body);
+    if (!parsed.success) throw new ValidationError(toFieldErrors(parsed.error));
+    await saveFeedback(parsed.data, { model: config.generator.model });
+    logger.info({ rating: parsed.data.rating }, 'agent feedback');
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** GET /api/agent/feedback -> { up, down, recentDown: [{ at, prompt, comment, cases }] } */
+agentRoutes.get('/feedback', async (_req, res, next) => {
+  try {
+    res.json({ success: true, ...(await feedbackSummary()) });
   } catch (err) {
     next(err);
   }

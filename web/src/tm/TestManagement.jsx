@@ -216,7 +216,7 @@ export default function TestManagement({ onSignOut }) {
         <Box sx={{ width: 28, height: 28, borderRadius: '7px', bgcolor: '#2563eb', display: 'grid', placeItems: 'center' }}>
           <CheckIcon size={18} sx={{ strokeWidth: 2.4 }} />
         </Box>
-        <Box sx={{ fontSize: 15, fontWeight: 600, letterSpacing: '-.01em' }}>{generatorOnly ? 'Test Case Generator' : 'Test Management'}</Box>
+        <Box sx={{ fontSize: 15, fontWeight: 600, letterSpacing: '-.01em' }}>Testcase Generator</Box>
         {!generatorOnly && (
           <Box sx={{ fontSize: 13, color: '#94a3b8', borderLeft: '1px solid #334155', pl: 1.5, display: { xs: 'none', sm: 'block' } }}>{repo.projectName || 'Default project'}</Box>
         )}
@@ -226,7 +226,7 @@ export default function TestManagement({ onSignOut }) {
           )}
           {generatorPath && options.mode !== 'generator' && (
             <Button size="small" href="/" sx={{ color: '#cbd5e1', minWidth: 0, '&:hover': { bgcolor: '#1e293b' } }}>
-              Open Test Management
+              Open Test Cases
             </Button>
           )}
           <JiraStatus enabled={options.destinations.some((d) => d.key === 'jira') || options.pausedDestinations?.includes('jira')} />

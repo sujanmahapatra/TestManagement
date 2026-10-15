@@ -180,6 +180,25 @@ export const ListIcon = (p) => (
     <circle cx="4" cy="14.5" r=".6" fill="currentColor" />
   </Svg>
 );
+/** Requirement -> scenarios -> cases, as a branching diagram. */
+export const TreeIcon = (p) => (
+  <Svg {...p}>
+    <rect x="2.5" y="8" width="4" height="4" rx="1" />
+    <rect x="13.5" y="3" width="4" height="4" rx="1" />
+    <rect x="13.5" y="13" width="4" height="4" rx="1" />
+    <path d="M6.5 10h3.5M10 5v10M10 5h3.5M10 15h3.5" />
+  </Svg>
+);
+export const ThumbUpIcon = (p) => (
+  <Svg {...p}>
+    <path d="M6.5 9v8h-3V9zM6.5 9l3.2-5.6a1.6 1.6 0 0 1 2.9 1.2L11.8 8h4.1a1.6 1.6 0 0 1 1.6 1.9l-1.1 5.6a2 2 0 0 1-2 1.5H6.5" />
+  </Svg>
+);
+export const ThumbDownIcon = (p) => (
+  <Svg {...p}>
+    <path d="M6.5 11V3h-3v8zM6.5 11l3.2 5.6a1.6 1.6 0 0 0 2.9-1.2L11.8 12h4.1a1.6 1.6 0 0 0 1.6-1.9l-1.1-5.6a2 2 0 0 0-2-1.5H6.5" />
+  </Svg>
+);
 export const WandIcon = (p) => (
   <Svg {...p}>
     <path d="M4 16L13.5 6.5M12 5l3 3M15 2.5v2M17.5 5h-2M8 3v1.6M3.8 7.2h1.6" />

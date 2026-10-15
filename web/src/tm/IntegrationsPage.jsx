@@ -48,6 +48,12 @@ export default function IntegrationsPage({ options }) {
     if (jiraOn) checkJira();
   }, [jiraOn, checkJira]);
 
+  // How reviewers have rated the generator's results.
+  const [feedback, setFeedback] = useState(null);
+  useEffect(() => {
+    api.agentFeedback().then(setFeedback, () => setFeedback(null));
+  }, []);
+
   const has = (key) => options.destinations.some((d) => d.key === key);
   const sources = options.agent.sources ?? {};
 
@@ -65,7 +71,11 @@ export default function IntegrationsPage({ options }) {
           color="#7c3aed"
           mark="✦"
           status={options.agent.enabled ? 'ok' : 'off'}
-          detail={options.agent.enabled ? `${options.agent.provider} · ${options.agent.model}` : 'No AI provider is configured, so Generate with AI cannot run.'}
+          detail={
+            options.agent.enabled
+              ? `${options.agent.provider} · ${options.agent.model}${feedback ? ` · Feedback: ${feedback.up} 👍 ${feedback.down} 👎` : ''}`
+              : 'No AI provider is configured, so Generate with AI cannot run.'
+          }
           help={options.agent.enabled ? null : 'Set GROQ_API_KEY (free at console.groq.com) or ANTHROPIC_API_KEY.'}
         />
         <Card

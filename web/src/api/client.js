@@ -180,6 +180,8 @@ export const api = {
   checkJira: () => request('/api/integrations/jira'),
   runAgent,
   fetchAgentSource: ({ type, ref, frameIds }) => request('/api/agent/sources', { method: 'POST', body: { type, ref, frameIds } }),
+  sendAgentFeedback: (feedback) => request('/api/agent/feedback', { method: 'POST', body: feedback }),
+  agentFeedback: () => request('/api/agent/feedback'),
   listFigmaFrames: (ref) => request('/api/agent/sources/figma/frames', { method: 'POST', body: { ref } }),
   getAuthStatus: () => request('/auth/status'),
   getOptions: () => request('/api/options'),

@@ -170,3 +170,18 @@ test('a single-project file from before projects becomes the first project', asy
   const { added } = await repo.addCases({ folderId: 'f_1', subfolders: false, testCases: [CASE] });
   assert.equal(added[0].key, 'TC-8');
 });
+
+test('feedback on a generation is saved and summed up', async () => {
+  process.env.FEEDBACK_PATH = join(mkdtempSync(join(tmpdir(), 'tcg-feedback-')), 'feedback.jsonl');
+  const { saveFeedback, feedbackSummary } = await import('../src/domain/feedback.js');
+  const { agentFeedbackSchema } = await import('../src/domain/testCase.js');
+  assert.deepEqual(await feedbackSummary(), { up: 0, down: 0, recentDown: [] });
+  await saveFeedback(agentFeedbackSchema.parse({ rating: 'up', cases: 8 }), { model: 'm' });
+  await saveFeedback(agentFeedbackSchema.parse({ rating: 'down', comment: 'Missed the lockout rule', prompt: 'Login with OTP', cases: 5 }), { model: 'm' });
+  const summary = await feedbackSummary();
+  assert.equal(summary.up, 1);
+  assert.equal(summary.down, 1);
+  assert.equal(summary.recentDown[0].comment, 'Missed the lockout rule');
+  assert.equal(summary.recentDown[0].prompt, 'Login with OTP');
+  assert.equal(agentFeedbackSchema.safeParse({ rating: 'meh' }).success, false);
+});

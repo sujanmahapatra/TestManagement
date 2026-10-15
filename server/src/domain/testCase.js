@@ -367,6 +367,17 @@ export const updateCaseSchema = z.object({ testCase: repositoryCaseSchema });
 export const caseIdsSchema = z.object({ ids: z.array(z.string().max(40)).min(1, 'Select at least one test case.').max(5000) });
 export const moveCasesSchema = caseIdsSchema.extend({ folderId: z.string().max(40) });
 
+/** POST /api/agent/feedback: a reviewer's thumbs up or down on a generation. */
+export const agentFeedbackSchema = z.object({
+  rating: z.enum(['up', 'down'], { errorMap: () => ({ message: 'Rate the result up or down.' }) }),
+  comment: z.string().trim().max(1000, 'Keep the comment under 1,000 characters.').optional(),
+  // What was rated, so a poor result can be traced to its requirement.
+  prompt: z.string().max(500).optional(),
+  summary: z.string().max(2000).optional(),
+  cases: z.number().int().min(0).max(1000).optional(),
+  scenarios: z.number().int().min(0).max(1000).optional(),
+});
+
 /** POST /api/agent/sources: where to fetch a requirement from. */
 export const agentSourceSchema = z.object({
   type: z.enum(['jira', 'confluence', 'ado', 'figma'], { errorMap: () => ({ message: 'Choose Jira, Confluence, Azure DevOps or Figma.' }) }),

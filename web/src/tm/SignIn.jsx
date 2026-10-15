@@ -47,7 +47,7 @@ function SignInPage({ onSignedIn }) {
           <Box sx={{ width: 32, height: 32, borderRadius: '8px', bgcolor: '#2563eb', color: '#fff', display: 'grid', placeItems: 'center' }}>
             <CheckIcon size={20} sx={{ strokeWidth: 2.4 }} />
           </Box>
-          <Box sx={{ fontSize: 18, fontWeight: 600, color: 'var(--tm-ink)' }}>Test Management</Box>
+          <Box sx={{ fontSize: 18, fontWeight: 600, color: 'var(--tm-ink)' }}>Testcase Generator</Box>
         </Box>
         <Box>
           <Box component="h1" sx={{ m: 0, fontSize: 20, fontWeight: 600, color: 'var(--tm-ink)' }}>Sign in</Box>

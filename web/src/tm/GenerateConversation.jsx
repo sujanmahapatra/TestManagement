@@ -1,6 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Button, Checkbox, IconButton, Menu, MenuItem, OutlinedInput, TextField, Tooltip } from '@mui/material';
-import { CheckIcon, ChevronDown, ChevronRight, CloseIcon, FolderIcon, InfoIcon, PlusIcon, PriorityIcon, SendIcon, SettingsIcon, SparkleIcon } from './icons';
+import {
+  CheckIcon,
+  ChevronDown,
+  ChevronRight,
+  CloseIcon,
+  FolderIcon,
+  InfoIcon,
+  ListIcon,
+  PlusIcon,
+  PriorityIcon,
+  SendIcon,
+  SettingsIcon,
+  SparkleIcon,
+  ThumbDownIcon,
+  ThumbUpIcon,
+  TreeIcon,
+} from './icons';
+import { api } from '../api/client';
 import { LiveReasoning, StageMark, contextLabel, stageState } from './GenerateProgress';
 import { SourceMark } from './GenerateInput';
 import SettingsPopover from './SettingsPopover';
@@ -305,13 +322,226 @@ function Scenario({ name, items, selected, addedKeys, doneVerb, viewingId, disab
 }
 
 /** The current suite: the result of the latest round, selectable, case by case. */
+/** List or tree: two small toggles at the right of the results header. */
+function ViewSwitch({ view, onChange }) {
+  const button = (key, label, Icon) => (
+    <Tooltip title={label} arrow>
+      <IconButton
+        size="small"
+        aria-label={label}
+        aria-pressed={view === key}
+        onClick={() => onChange(key)}
+        sx={{
+          borderRadius: '6px',
+          color: view === key ? 'var(--tm-primary)' : 'var(--tm-muted)',
+          bgcolor: view === key ? 'var(--tm-primary-soft)' : 'transparent',
+          '&:hover': { bgcolor: view === key ? 'var(--tm-primary-soft)' : 'var(--tm-hover)' },
+        }}
+      >
+        <Icon size={17} />
+      </IconButton>
+    </Tooltip>
+  );
+  return (
+    <Box sx={{ display: 'flex', gap: 0.5, ml: 'auto', mr: 1 }}>
+      {button('list', 'List view', ListIcon)}
+      {button('tree', 'Tree view', TreeIcon)}
+    </Box>
+  );
+}
+
+const LINE = 'var(--tm-rule-strong)';
+
+/** One box in the tree. */
+function TreeNode({ children, tone = 'case', active, onClick }) {
+  const tones = {
+    root: { bgcolor: 'var(--tm-ai-soft)', borderColor: 'var(--tm-ai)', fontWeight: 600 },
+    scenario: { bgcolor: 'var(--tm-sunken)', borderColor: 'var(--tm-rule-strong)', fontWeight: 600 },
+    case: { bgcolor: active ? 'var(--tm-primary-soft)' : 'var(--tm-surface)', borderColor: active ? 'var(--tm-primary)' : 'var(--tm-rule)' },
+  };
+  return (
+    <Box
+      onClick={onClick}
+      sx={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 0.75,
+        px: 1,
+        py: 0.75,
+        border: '1px solid',
+        borderRadius: '8px',
+        fontSize: 13,
+        color: 'var(--tm-ink)',
+        width: tone === 'case' ? 300 : 210,
+        flex: 'none',
+        cursor: onClick ? 'pointer' : 'default',
+        '&:hover': onClick ? { borderColor: 'var(--tm-primary)' } : undefined,
+        ...tones[tone],
+      }}
+    >
+      {children}
+    </Box>
+  );
+}
+
+/**
+ * The suite as a diagram: the requirement, its scenarios, and each
+ * scenario's cases, joined by lines. A case opens its details on click.
+ */
+function TreeView({ groups, agent, doneVerb, viewingId, disabled, onView }) {
+  // A branch: a horizontal tick into each child, and a vertical line joining them.
+  const branch = {
+    position: 'relative',
+    pl: 3,
+    '&::before': { content: '""', position: 'absolute', left: 0, top: '50%', width: 24, borderTop: `1px solid ${LINE}` },
+  };
+  const trunk = (count) => ({
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 1,
+    position: 'relative',
+    ml: 3,
+    '&::before': count > 1 ? { content: '""', position: 'absolute', left: 0, top: 18, bottom: 18, borderLeft: `1px solid ${LINE}` } : undefined,
+  });
+  return (
+    <Box sx={{ overflowX: 'auto', p: 2, borderTop: '1px solid var(--tm-rule)' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', width: 'max-content' }}>
+        <TreeNode tone="root">
+          <SparkleIcon size={14} sx={{ color: 'var(--tm-ai)' }} />
+          Requirement
+          <Box component="span" sx={{ ml: 'auto', fontSize: 12, color: 'var(--tm-muted)', fontWeight: 400 }}>{agent.cases.length}</Box>
+        </TreeNode>
+        <Box sx={{ width: 24, borderTop: `1px solid ${LINE}` }} />
+        <Box sx={{ ...trunk(groups.length), ml: 0 }}>
+          {groups.map((g) => (
+            <Box key={g.name} sx={{ ...branch, display: 'flex', alignItems: 'center' }}>
+              <TreeNode tone="scenario">
+                <Box component="span" sx={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={g.name}>{g.name}</Box>
+                <Box component="span" sx={{ fontSize: 12, color: 'var(--tm-muted)', fontWeight: 400 }}>{g.items.length}</Box>
+              </TreeNode>
+              <Box sx={{ width: 24, borderTop: `1px solid ${LINE}` }} />
+              <Box sx={{ ...trunk(g.items.length), ml: 0 }}>
+                {g.items.map((tc) => {
+                  const added = agent.addedKeys[tc.id];
+                  return (
+                    <Box key={tc.id} sx={branch}>
+                      <TreeNode active={viewingId === tc.id} onClick={() => onView(tc.id)}>
+                        <Checkbox
+                          size="small"
+                          checked={agent.selected.has(tc.id)}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => agent.toggle([tc.id], e.target.checked)}
+                          disabled={disabled || Boolean(added)}
+                          sx={{ p: 0 }}
+                          inputProps={{ 'aria-label': `Select ${tc.title}` }}
+                        />
+                        <PriorityIcon priority={tc.priority} />
+                        <Box component="span" title={tc.title} sx={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: added ? 'var(--tm-muted)' : 'inherit' }}>
+                          {tc.title}
+                        </Box>
+                        {added && <Pill bg="var(--tm-ok-soft)" color="var(--tm-ok)">{doneVerb}</Pill>}
+                      </TreeNode>
+                    </Box>
+                  );
+                })}
+              </Box>
+            </Box>
+          ))}
+        </Box>
+      </Box>
+    </Box>
+  );
+}
+
+/** 👍 / 👎 on this result; a thumbs-down can say what was wrong. Saved on the server. */
+function Feedback({ agent, message }) {
+  const [rating, setRating] = useState(null); // 'up' | 'down' once chosen
+  const [comment, setComment] = useState('');
+  const [state, setState] = useState('idle'); // 'idle' | 'asking' | 'sending' | 'sent' | 'failed'
+
+  const send = async (value, text) => {
+    setState('sending');
+    try {
+      await api.sendAgentFeedback({
+        rating: value,
+        ...(text?.trim() && { comment: text.trim() }),
+        prompt: agent.input.prompt.slice(0, 500) || agent.input.files.map((f) => f.name).join(', ').slice(0, 500) || undefined,
+        summary: message?.summary?.slice(0, 2000),
+        cases: agent.cases.length,
+        scenarios: message?.snapshot?.length,
+      });
+      setState('sent');
+    } catch {
+      setState('failed');
+    }
+  };
+
+  const thumb = (value, label, Icon) => (
+    <Tooltip title={label} arrow>
+      <span>
+        <IconButton
+          size="small"
+          aria-label={label}
+          aria-pressed={rating === value}
+          disabled={state === 'sending' || state === 'sent'}
+          onClick={() => {
+            setRating(value);
+            if (value === 'up') send('up');
+            else setState('asking');
+          }}
+          sx={{ color: rating === value ? 'var(--tm-primary)' : 'var(--tm-muted)' }}
+        >
+          <Icon size={16} />
+        </IconButton>
+      </span>
+    </Tooltip>
+  );
+
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap', minHeight: 30 }}>
+      {thumb('up', 'Good result', ThumbUpIcon)}
+      {thumb('down', 'Poor result', ThumbDownIcon)}
+      {state === 'asking' && (
+        <Box
+          component="form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            send('down', comment);
+          }}
+          sx={{ display: 'flex', gap: 0.75, flex: 1, minWidth: 260 }}
+        >
+          <OutlinedInput
+            size="small"
+            autoFocus
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            placeholder="What was wrong? (optional)"
+            inputProps={{ maxLength: 1000, 'aria-label': 'What was wrong' }}
+            sx={{ flex: 1, fontSize: 13.5, bgcolor: 'var(--tm-surface)' }}
+          />
+          <Button type="submit" size="small" variant="outlined">Send</Button>
+        </Box>
+      )}
+      {state === 'sent' && <Box sx={{ fontSize: 12.5, color: 'var(--tm-muted)' }}>Thanks for your feedback.</Box>}
+      {state === 'failed' && <Box sx={{ fontSize: 12.5, color: 'var(--tm-bad)' }}>Could not send the feedback. Try again.</Box>}
+    </Box>
+  );
+}
+
 function CurrentResults({ agent, doneVerb, viewingId, disabled, onView }) {
   const [open, setOpen] = useState(true);
+  const [view, setView] = useState('list');
   const groups = useMemo(() => groupByScenario(agent.cases), [agent.cases]);
   return (
     <Box sx={{ border: '1px solid var(--tm-rule)', borderRadius: '10px', bgcolor: 'var(--tm-surface)', overflow: 'hidden', opacity: agent.running ? 0.6 : 1 }}>
-      <ResultsHeader count={agent.cases.length} scenarios={groups.length} open={open} onToggle={() => setOpen((v) => !v)} />
-      {open && (
+      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+        <ResultsHeader count={agent.cases.length} scenarios={groups.length} open={open} onToggle={() => setOpen((v) => !v)} />
+        {open && <ViewSwitch view={view} onChange={setView} />}
+      </Box>
+      {open && view === 'tree' && (
+        <TreeView groups={groups} agent={agent} doneVerb={doneVerb} viewingId={viewingId} disabled={disabled} onView={onView} />
+      )}
+      {open && view === 'list' && (
         <Box sx={{ borderTop: '1px solid var(--tm-rule)' }}>
           {groups.map((g) => (
             <Scenario
@@ -606,7 +836,10 @@ export default function GenerateConversation({
               <Thinking message={m} />
               <Findings message={m} />
               {i === lastAi && !(agent.running && agent.running.refining) ? (
-                <CurrentResults agent={agent} doneVerb={doneVerb} viewingId={viewingId} disabled={Boolean(agent.running)} onView={onView} />
+                <>
+                  <CurrentResults agent={agent} doneVerb={doneVerb} viewingId={viewingId} disabled={Boolean(agent.running)} onView={onView} />
+                  {!agent.running && <Feedback key={i} agent={agent} message={m} />}
+                </>
               ) : (
                 <PastResults message={m} />
               )}
