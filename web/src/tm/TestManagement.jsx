@@ -9,7 +9,7 @@ import GenerateWizard from './GenerateWizard';
 import JiraStatus from './JiraStatus';
 import IntegrationsPage from './IntegrationsPage';
 import ProjectSwitcher from './ProjectSwitcher';
-import { BookIcon, CheckIcon, CloseIcon, ListIcon, PlugIcon, SparkleIcon } from './icons';
+import { BookIcon, CheckIcon, CloseIcon, ListIcon, PlugIcon } from './icons';
 
 const NO_OPTIONS = {
   destinations: [],
@@ -282,7 +282,6 @@ export default function TestManagement({ onSignOut }) {
           ))}
           <Box sx={{ mt: 'auto', pt: 1, borderTop: '1px solid var(--tm-rule)', display: 'flex', flexDirection: 'column', gap: 0.25 }}>
             <NavItem item={{ key: 'integrations', label: 'Integrations', icon: PlugIcon }} active={page === 'integrations'} onClick={() => setPage('integrations')} />
-            <NavItem item={{ key: 'generator', label: 'Generator only', icon: SparkleIcon }} href="/generator" />
             <NavItem item={{ key: 'docs', label: 'View Documentation', icon: BookIcon }} href="https://github.com/sujanmahapatra/TestManagement#readme" />
           </Box>
         </Box>
