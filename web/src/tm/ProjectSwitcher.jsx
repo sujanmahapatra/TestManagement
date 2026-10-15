@@ -38,12 +38,12 @@ function NameDialog({ open, title, initial, action, onClose, onSubmit }) {
 
 /**
  * The project box in the left menu: shows the open project and switches
- * between projects, renames and deletes them. Each project has its
+ * between projects and renames the open one. Each project has its
  * own folders and test cases.
  */
 export default function ProjectSwitcher({ repo }) {
   const [anchor, setAnchor] = useState(null);
-  const [dialog, setDialog] = useState(null); // 'rename' | 'delete'
+  const [dialog, setDialog] = useState(null); // 'rename'
   // A dialog opens once the menu has finished closing, so the menu's focus
   // trap is gone and the dialog's field can take focus.
   const [pending, setPending] = useState(null);
@@ -104,9 +104,6 @@ export default function ProjectSwitcher({ repo }) {
         <MenuItem onClick={() => { setAnchor(null); setPending('rename'); }} sx={{ fontSize: 13.5 }}>
           Rename “{current?.name ?? repo.projectName}”
         </MenuItem>
-        <MenuItem disabled={repo.projects.length < 2} onClick={() => { setAnchor(null); setPending('delete'); }} sx={{ fontSize: 13.5, color: 'var(--tm-bad)' }}>
-          Delete project…
-        </MenuItem>
       </Menu>
 
       <NameDialog
@@ -117,27 +114,6 @@ export default function ProjectSwitcher({ repo }) {
         onClose={close}
         onSubmit={async (name) => name === repo.projectName || Boolean(await repo.renameProject(name))}
       />
-      <Dialog open={dialog === 'delete'} onClose={close} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: '12px' } }}>
-        <Box sx={{ p: 2.5, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-          <Box sx={{ fontSize: 15, fontWeight: 600 }}>Delete “{repo.projectName}”?</Box>
-          <Box sx={{ fontSize: 13.5, color: 'var(--tm-muted)' }}>
-            This permanently deletes the project with its folders and {current?.cases ?? 0} test {current?.cases === 1 ? 'case' : 'cases'}. It cannot be undone.
-          </Box>
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-            <Button variant="outlined" onClick={close}>Cancel</Button>
-            <Button
-              variant="contained"
-              color="error"
-              onClick={async () => {
-                close();
-                await repo.deleteProject(repo.projectId);
-              }}
-            >
-              Delete project
-            </Button>
-          </Box>
-        </Box>
-      </Dialog>
     </>
   );
 }
