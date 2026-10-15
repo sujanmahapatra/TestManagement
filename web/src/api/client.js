@@ -169,6 +169,7 @@ const repository = {
     request('/api/repository/cases', { method: 'POST', body: { folderId, subfolders, testCases } }),
   updateCase: (id, testCase) => request(`/api/repository/cases/${encodeURIComponent(id)}`, { method: 'PATCH', body: { testCase } }),
   deleteCases: (ids) => request('/api/repository/cases/delete', { method: 'POST', body: { ids } }),
+  findDuplicates: ({ projectId, folderId }) => request('/api/repository/duplicates', { method: 'POST', body: { projectId, folderId } }),
   moveCases: (ids, folderId) => request('/api/repository/cases/move', { method: 'POST', body: { ids, folderId } }),
 };
 

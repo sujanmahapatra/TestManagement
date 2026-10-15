@@ -96,6 +96,7 @@ How to work:
 
 Test case quality:
 - A title says what is verified, e.g. "Login fails with an expired password".
+- Every case has a description: one or two sentences on what it verifies and why it matters. Never leave it empty.
 - A step is one concrete action with the specific data to use. An expected result is something a tester can observe.
 - Preconditions state the setup needed before step 1: accounts, data, configuration.
 - Each case cites its source: the attachment name, or "Prompt", and a short verbatim excerpt it was derived from.
@@ -342,6 +343,13 @@ function requirementLinks(raw, input) {
   return issues.length === 1 ? issues : [];
 }
 
+/** A description when the model left it out: what is checked, and what should happen. */
+function describeCase(title, expectedResults) {
+  const outcome = expectedResults.find(Boolean);
+  const what = clip(title, LINE).replace(/[.s]+$/, '');
+  return outcome && outcome !== title ? `Verifies: ${what}. Expected: ${outcome.replace(/[.s]+$/, '')}.` : `Verifies: ${what}.`;
+}
+
 /** One model case -> the app's test case shape, which every exporter files. */
 function toTestCase(raw, scenario, { input, platform, testType, id }) {
   const steps = raw.steps
@@ -360,7 +368,7 @@ function toTestCase(raw, scenario, { input, platform, testType, id }) {
   return {
     id,
     title: clip(raw.title, LINE),
-    description: clip(raw.description, 2000),
+    description: clip(raw.description, 2000) || describeCase(raw.title, expectedResults),
     scenario: clip(scenario, 160) || null,
     kind,
     priority: pick(raw.priority, input.priorities, input.priorities.includes('medium') ? 'medium' : input.priorities[0]),

@@ -3,6 +3,7 @@ import { Router } from 'express';
 import {
   addCasesSchema,
   caseIdsSchema,
+  duplicatesSchema,
   createFolderSchema,
   moveCasesSchema,
   renameFolderSchema,
@@ -23,6 +24,7 @@ import {
   renameProject,
   updateCase,
 } from '../domain/repository.js';
+import { reviewDuplicates } from '../domain/duplicateReview.js';
 import { ValidationError } from '../utils/errors.js';
 
 /**
@@ -78,6 +80,29 @@ repositoryRoutes.post('/cases', handle((req) => addCases(parse(addCasesSchema, r
 repositoryRoutes.patch(
   '/cases/:id',
   handle(async (req) => ({ testCase: await updateCase(req.params.id, parse(updateCaseSchema, req.body).testCase) })),
+);
+
+/**
+ * POST /api/repository/duplicates { projectId?, folderId? }
+ *   -> { verified, scanned, checked, groups: [{ id, similarity, keepId, caseIds, reason }] }
+ * Finds likely duplicates and, when an AI provider is set, has it verify them.
+ */
+repositoryRoutes.post(
+  '/duplicates',
+  handle(async (req) => {
+    const { projectId, folderId } = parse(duplicatesSchema, req.body);
+    const { folders, cases } = await getRepository(projectId);
+    let scope = cases;
+    if (folderId) {
+      const ids = new Set([folderId]);
+      for (let grew = true; grew; ) {
+        grew = false;
+        for (const f of folders) if (f.parentId && ids.has(f.parentId) && !ids.has(f.id)) grew = ids.add(f.id) && true;
+      }
+      scope = cases.filter((c) => ids.has(c.folderId));
+    }
+    return reviewDuplicates(scope);
+  }),
 );
 
 /** POST /api/repository/cases/delete { ids } -> { removed } */

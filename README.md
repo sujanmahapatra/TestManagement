@@ -26,7 +26,9 @@ and Atlassian access/refresh tokens live in process memory — never on disk.
   projects (each with its own folders, test cases and TC numbering), a test
   case list with search, filters and columns, and **Generate with AI**, which
   adds approved cases to a folder. Saved cases export to Jira, Azure DevOps or
-  Excel.
+  Excel. **Review duplicates** (beside the new-folder button) compares the
+  folder's or project's cases, has the AI verify which really test the same
+  thing, and lets you choose which to keep before removing the rest.
 - **`generator`** — only the AI generator, as the whole screen. The same view
   is always at **`/generator`** (for example
   `https://your-app.onrender.com/generator`), whatever `APP_MODE` is. There are no

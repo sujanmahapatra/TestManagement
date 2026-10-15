@@ -364,6 +364,11 @@ export const addCasesSchema = z.object({
 });
 
 export const updateCaseSchema = z.object({ testCase: repositoryCaseSchema });
+/** POST /api/repository/duplicates: which cases to review -- a project, optionally one folder and its subfolders. */
+export const duplicatesSchema = z.object({
+  projectId: z.string().max(40).optional(),
+  folderId: z.string().max(40).optional(),
+});
 export const caseIdsSchema = z.object({ ids: z.array(z.string().max(40)).min(1, 'Select at least one test case.').max(5000) });
 export const moveCasesSchema = caseIdsSchema.extend({ folderId: z.string().max(40) });
 

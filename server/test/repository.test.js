@@ -185,3 +185,25 @@ test('feedback on a generation is saved and summed up', async () => {
   assert.equal(summary.recentDown[0].prompt, 'Login with OTP');
   assert.equal(agentFeedbackSchema.safeParse({ rating: 'meh' }).success, false);
 });
+
+test('duplicate review: reworded cases are candidates, and confirmed pairs group with the fullest case kept', async () => {
+  const { candidatePairs, groupPairs, findDuplicates } = await import('../src/domain/duplicates.js');
+  const mk = (id, key, title, steps) => ({ id, key, title, steps, expectedResults: ['Done'], preconditions: [] });
+  const cases = [
+    mk('a', 'TC-1', 'Happy path – delete a text message for everyone within 2 days', ['Open chat', 'Long press', 'Delete for everyone']),
+    mk('b', 'TC-2', 'Sender deletes a message for everyone within 2 days – happy path', ['Open chat', 'Long press a message', 'Choose delete for everyone', 'Confirm']),
+    mk('c', 'TC-3', 'Change the profile photo', ['Open profile', 'Upload a photo']),
+  ];
+  const pairs = candidatePairs(cases);
+  assert.deepEqual(pairs.map((p) => [p.a.key, p.b.key]), [['TC-1', 'TC-2']]);
+
+  const [group] = groupPairs([{ ...pairs[0], reason: 'Same flow, reworded.' }]);
+  assert.deepEqual(group.caseIds, ['b', 'a']); // TC-2 has more steps, so it is kept
+  assert.equal(group.keepId, 'b');
+  assert.equal(group.reason, 'Same flow, reworded.');
+
+  // The strict word-only check (used without AI) still catches near-identical cases.
+  const strict = findDuplicates([...cases, mk('d', 'TC-4', 'Change the profile photo', ['Open profile', 'Upload a photo'])]);
+  assert.ok(strict.some((g) => g.caseIds.join() === 'c,d'));
+  assert.ok(!strict.some((g) => g.caseIds.includes('c') && g.caseIds.includes('a')));
+});

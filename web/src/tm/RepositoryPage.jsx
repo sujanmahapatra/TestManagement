@@ -21,6 +21,7 @@ import {
 } from './icons';
 import { AI_GRADIENT, PRIORITY_STYLE } from './theme';
 import CaseDrawer from './CaseDrawer';
+import DuplicatesDialog from './DuplicatesDialog';
 
 const formatDate = (iso) =>
   new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
@@ -283,6 +284,7 @@ export default function RepositoryPage({ repo, options, folderId, onFolderChange
   const [sortAnchor, setSortAnchor] = useState(null);
   const [columns, setColumns] = useState(() => new Set()); // optional columns shown
   const [columnsAnchor, setColumnsAnchor] = useState(null);
+  const [reviewingDuplicates, setReviewingDuplicates] = useState(false);
   const activeFilters = (priority !== 'all' ? 1 : 0) + (category !== 'all' ? 1 : 0);
 
   const folder = repo.folders.find((f) => f.id === folderId) ?? repo.folders[0];
@@ -428,6 +430,15 @@ export default function RepositoryPage({ repo, options, folderId, onFolderChange
           >
             <FolderPlusIcon size={17} />
           </IconButton>
+          <Button
+            variant="text"
+            onClick={() => setReviewingDuplicates(true)}
+            disabled={repo.cases.length < 2}
+            startIcon={<SparkleIcon size={15} sx={{ color: 'var(--tm-ai)' }} />}
+            sx={{ color: 'var(--tm-ink-soft)', fontWeight: 500, px: 1.25 }}
+          >
+            Review duplicates
+          </Button>
           <Box sx={{ ml: { sm: 'auto' }, display: 'flex', gap: 1, alignItems: 'center', width: { xs: '100%', sm: 'auto' } }}>
             <OutlinedInput
               size="small"
@@ -733,6 +744,8 @@ export default function RepositoryPage({ repo, options, folderId, onFolderChange
           Delete
         </MenuItem>
       </Menu>
+
+      <DuplicatesDialog open={reviewingDuplicates} onClose={() => setReviewingDuplicates(false)} repo={repo} folder={folder} notify={notify} />
 
       <CaseDrawer
         open={Boolean(creating)}
