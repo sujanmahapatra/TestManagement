@@ -1,16 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Box, Button, IconButton, Snackbar, ThemeProvider } from '@mui/material';
+import { Box, Button, IconButton, Snackbar } from '@mui/material';
 import { api, startJiraLogin } from '../api/client';
 import { fileApprovedCases } from '../services/testCaseService';
 import { useRepository } from '../hooks/useRepository';
 import { useTestCaseAgent } from '../hooks/useTestCaseAgent';
-import { buildTheme } from '../theme';
-import ClassicApp from '../App';
 import RepositoryPage from './RepositoryPage';
 import GenerateWizard from './GenerateWizard';
 import JiraStatus from './JiraStatus';
 import IntegrationsPage from './IntegrationsPage';
-import { BookIcon, CheckIcon, CloseIcon, ListIcon, PlugIcon, WandIcon } from './icons';
+import { BookIcon, CheckIcon, CloseIcon, ListIcon, PlugIcon } from './icons';
 
 const NO_OPTIONS = {
   destinations: [],
@@ -23,10 +21,7 @@ const NO_OPTIONS = {
 
 const NAV = [
   { key: 'cases', label: 'Test Cases', icon: ListIcon },
-  { key: 'classic', label: 'Quick Generator', icon: WandIcon },
 ];
-
-const classicTheme = buildTheme('light');
 
 /** One entry in the left menu: a page, or a link out. */
 function NavItem({ item, active, onClick, href }) {
@@ -81,8 +76,7 @@ const TOAST_TONE = {
 
 /**
  * The test management shell: a top bar, a left navigation, the test case
- * list with its AI generator, and the earlier one-note generator kept as
- * "Quick generator". It owns the shared state -- options, the Atlassian
+ * list with its AI generator, and the Integrations page. It owns the shared state -- options, the Atlassian
  * session, the repository and the agent -- so a generation keeps running
  * while the reviewer moves around.
  */
@@ -246,11 +240,6 @@ export default function TestManagement({ onSignOut }) {
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '232px 1fr' }, minHeight: 0 }}>
         {/* navigation */}
         <Box component="nav" aria-label="Main" sx={{ display: { xs: 'none', sm: 'flex' }, flexDirection: 'column', gap: 0.25, px: 1.25, py: 1.5, bgcolor: '#f8f9fb', borderRight: '1px solid var(--tm-rule)' }}>
-          <Box sx={{ px: 1.25, pb: 0.75, fontSize: 12, fontWeight: 600, color: 'var(--tm-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>Projects</Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mx: 0.25, mb: 1.5, px: 1, py: 0.75, border: '1px solid var(--tm-rule-strong)', borderRadius: '6px', bgcolor: 'var(--tm-surface)', fontSize: 13.5, color: 'var(--tm-ink)' }}>
-            <Box sx={{ width: 20, height: 20, borderRadius: '5px', border: '1.5px solid var(--tm-ink-soft)', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700, flex: 'none' }}>+</Box>
-            Default project
-          </Box>
           {NAV.map((item) => (
             <NavItem key={item.key} item={item} active={page === item.key} onClick={() => setPage(item.key)} />
           ))}
@@ -261,10 +250,10 @@ export default function TestManagement({ onSignOut }) {
         </Box>
 
         {/* page */}
-        <Box component="main" sx={{ minHeight: 0, minWidth: 0, overflow: page === 'classic' ? 'auto' : 'hidden', bgcolor: 'var(--tm-surface)' }}>
+        <Box component="main" sx={{ minHeight: 0, minWidth: 0, overflow: 'hidden', bgcolor: 'var(--tm-surface)' }}>
           {page === 'integrations' ? (
             <IntegrationsPage options={options} />
-          ) : page === 'cases' ? (
+          ) : (
             <RepositoryPage
               repo={repo}
               options={options}
@@ -276,10 +265,6 @@ export default function TestManagement({ onSignOut }) {
               onQuickGenerate={quickGenerate}
               notify={notify}
             />
-          ) : (
-            <ThemeProvider theme={classicTheme}>
-              <ClassicApp />
-            </ThemeProvider>
           )}
         </Box>
       </Box>
