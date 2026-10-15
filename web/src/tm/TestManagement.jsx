@@ -23,6 +23,54 @@ const NAV = [
   { key: 'cases', label: 'Test Cases', icon: ListIcon },
 ];
 
+/** The project box in the left menu; click it to rename the project. */
+function ProjectName({ name, onRename }) {
+  const [draft, setDraft] = useState(null); // null while not editing
+  const box = { display: 'flex', alignItems: 'center', gap: 1, mx: 0.25, mb: 1.5, px: 1, py: 0.75, border: '1px solid var(--tm-rule-strong)', borderRadius: '6px', bgcolor: 'var(--tm-surface)', fontSize: 13.5, color: 'var(--tm-ink)' };
+  const mark = <Box sx={{ width: 20, height: 20, borderRadius: '5px', border: '1.5px solid var(--tm-ink-soft)', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700, flex: 'none' }}>{(name || '+').charAt(0).toUpperCase()}</Box>;
+
+  const save = async () => {
+    const next = draft?.trim();
+    setDraft(null);
+    if (next && next !== name) await onRename(next);
+  };
+
+  if (draft !== null) {
+    return (
+      <Box sx={{ ...box, borderColor: 'var(--tm-primary)', boxShadow: '0 0 0 3px rgba(37, 99, 235, .15)' }}>
+        {mark}
+        <Box
+          component="input"
+          autoFocus
+          aria-label="Project name"
+          value={draft}
+          maxLength={80}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={save}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') e.currentTarget.blur();
+            if (e.key === 'Escape') setDraft(null);
+          }}
+          sx={{ all: 'unset', flex: 1, minWidth: 0, fontSize: 13.5 }}
+        />
+      </Box>
+    );
+  }
+  return (
+    <Box
+      component="button"
+      type="button"
+      title="Rename project"
+      onClick={() => setDraft(name)}
+      sx={{ ...box, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', '&:hover': { borderColor: 'var(--tm-ink-soft)' } }}
+    >
+      {mark}
+      <Box component="span" sx={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name || 'Default project'}</Box>
+      <Box component="span" aria-hidden sx={{ fontSize: 12, color: 'var(--tm-faint)' }}>✎</Box>
+    </Box>
+  );
+}
+
 /** One entry in the left menu: a page, or a link out. */
 function NavItem({ item, active, onClick, href }) {
   const Icon = item.icon;
@@ -211,7 +259,7 @@ export default function TestManagement({ onSignOut }) {
           <CheckIcon size={18} sx={{ strokeWidth: 2.4 }} />
         </Box>
         <Box sx={{ fontSize: 15, fontWeight: 600, letterSpacing: '-.01em' }}>Test Management</Box>
-        <Box sx={{ fontSize: 13, color: '#94a3b8', borderLeft: '1px solid #334155', pl: 1.5, display: { xs: 'none', sm: 'block' } }}>Default project</Box>
+        <Box sx={{ fontSize: 13, color: '#94a3b8', borderLeft: '1px solid #334155', pl: 1.5, display: { xs: 'none', sm: 'block' } }}>{repo.projectName || 'Default project'}</Box>
         <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1.5 }}>
           {!options.agent.enabled && (
             <Box component="button" type="button" onClick={() => setPage('integrations')} sx={{ all: 'unset', cursor: 'pointer', fontSize: 12.5, color: '#fbbf24', display: { xs: 'none', md: 'block' } }}>AI is off — see Integrations</Box>
@@ -241,10 +289,7 @@ export default function TestManagement({ onSignOut }) {
         {/* navigation */}
         <Box component="nav" aria-label="Main" sx={{ display: { xs: 'none', sm: 'flex' }, flexDirection: 'column', gap: 0.25, px: 1.25, py: 1.5, bgcolor: '#f8f9fb', borderRight: '1px solid var(--tm-rule)' }}>
           <Box sx={{ px: 1.25, pb: 0.75, fontSize: 12, fontWeight: 600, color: 'var(--tm-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>Projects</Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mx: 0.25, mb: 1.5, px: 1, py: 0.75, border: '1px solid var(--tm-rule-strong)', borderRadius: '6px', bgcolor: 'var(--tm-surface)', fontSize: 13.5, color: 'var(--tm-ink)' }}>
-            <Box sx={{ width: 20, height: 20, borderRadius: '5px', border: '1.5px solid var(--tm-ink-soft)', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700, flex: 'none' }}>+</Box>
-            Default project
-          </Box>
+          <ProjectName name={repo.projectName} onRename={repo.renameProject} />
           {NAV.map((item) => (
             <NavItem key={item.key} item={item} active={page === item.key} onClick={() => setPage(item.key)} />
           ))}

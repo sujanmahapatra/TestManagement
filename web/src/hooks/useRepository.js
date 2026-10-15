@@ -7,6 +7,7 @@ import { api } from '../api/client';
  * from its answer, so what is on screen is what is stored.
  */
 export function useRepository({ notify }) {
+  const [projectName, setProjectName] = useState('');
   const [folders, setFolders] = useState([]);
   const [cases, setCases] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -15,6 +16,7 @@ export function useRepository({ notify }) {
   const reload = useCallback(async () => {
     try {
       const data = await api.repository.get();
+      setProjectName(data.projectName ?? 'Default project');
       setFolders(data.folders);
       setCases(data.cases);
       setLoadError(null);
@@ -41,6 +43,13 @@ export function useRepository({ notify }) {
     },
     [notify],
   );
+
+  const renameProject = (name) =>
+    attempt(async () => {
+      const result = await api.repository.renameProject(name);
+      setProjectName(result.projectName);
+      return result.projectName;
+    });
 
   const createFolder = (name, parentId) =>
     attempt(async () => {
@@ -133,6 +142,8 @@ export function useRepository({ notify }) {
   );
 
   return {
+    projectName,
+    renameProject,
     folders,
     cases,
     loading,

@@ -346,6 +346,9 @@ export const repositoryCaseSchema = editedTestCaseSchema.extend({
 
 export const createFolderSchema = z.object({ name: folderName, parentId: z.string().max(40).nullable().default(null) });
 export const renameFolderSchema = z.object({ name: folderName });
+export const renameProjectSchema = z.object({
+  name: z.string({ required_error: 'Name the project.' }).trim().min(1, 'Name the project.').max(80, 'Keep the project name under 80 characters.'),
+});
 
 export const addCasesSchema = z.object({
   folderId: z.string({ required_error: 'Choose a destination folder.' }).max(40),

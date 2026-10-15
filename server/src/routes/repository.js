@@ -6,6 +6,7 @@ import {
   createFolderSchema,
   moveCasesSchema,
   renameFolderSchema,
+  renameProjectSchema,
   toFieldErrors,
   updateCaseSchema,
 } from '../domain/testCase.js';
@@ -17,6 +18,7 @@ import {
   getRepository,
   moveCases,
   renameFolder,
+  renameProject,
   updateCase,
 } from '../domain/repository.js';
 import { ValidationError } from '../utils/errors.js';
@@ -43,8 +45,11 @@ const handle = (fn) => async (req, res, next) => {
   }
 };
 
-/** GET /api/repository -> { folders, cases } */
+/** GET /api/repository -> { projectName, folders, cases } */
 repositoryRoutes.get('/', handle(() => getRepository()));
+
+/** PATCH /api/repository/project { name } -> { projectName } */
+repositoryRoutes.patch('/project', handle((req) => renameProject(parse(renameProjectSchema, req.body).name)));
 
 /** POST /api/repository/folders { name, parentId? } -> { folder } */
 repositoryRoutes.post('/folders', handle(async (req) => ({ folder: await createFolder(parse(createFolderSchema, req.body)) })));

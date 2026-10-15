@@ -20,6 +20,9 @@ const filePath = () => process.env.REPOSITORY_PATH || DEFAULT_PATH;
 
 export const REPOSITORY_LIMITS = { cases: 5000, folders: 500, depth: 6 };
 
+/** The name shown until someone renames the project; PROJECT_NAME sets it per deployment. */
+const defaultProjectName = () => process.env.PROJECT_NAME?.trim() || 'Default project';
+
 const now = () => new Date().toISOString();
 const folderId = () => `f_${randomUUID().slice(0, 8)}`;
 const caseId = () => `c_${randomUUID().slice(0, 12)}`;
@@ -107,7 +110,7 @@ function subtree(data, id) {
 
 export async function getRepository() {
   const data = await load();
-  return { folders: data.folders, cases: data.cases };
+  return { projectName: data.projectName || defaultProjectName(), folders: data.folders, cases: data.cases };
 }
 
 /** Titles of the cases in these folders (and their subfolders), for the agent's context. */
@@ -163,6 +166,12 @@ function addFolder(data, name, parentId) {
   data.folders.push(folder);
   return folder;
 }
+
+export const renameProject = (name) =>
+  mutate((data) => {
+    data.projectName = name;
+    return { projectName: name };
+  });
 
 export const createFolder = ({ name, parentId }) => mutate((data) => addFolder(data, name, parentId));
 

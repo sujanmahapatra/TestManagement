@@ -112,3 +112,14 @@ test('saved titles are available to the agent as context', async () => {
   const titles = await repo.titlesIn([folders[0].id]);
   assert.ok(titles.includes('Lockout'));
 });
+
+test('the project has a default name until it is renamed, and the name is saved', async () => {
+  assert.equal((await repo.getRepository()).projectName, 'Default project');
+  await repo.renameProject('Payments App');
+  assert.equal((await repo.getRepository()).projectName, 'Payments App');
+  assert.equal(JSON.parse(readFileSync(process.env.REPOSITORY_PATH, 'utf8')).projectName, 'Payments App');
+
+  const { renameProjectSchema } = await import('../src/domain/testCase.js');
+  assert.equal(renameProjectSchema.safeParse({ name: '   ' }).success, false);
+  assert.equal(renameProjectSchema.safeParse({ name: 'x'.repeat(81) }).success, false);
+});

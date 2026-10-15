@@ -44,6 +44,10 @@ services:
         sync: false
       - key: GROQ_MODEL
         value: openai/gpt-oss-120b
+      # The project name in the left menu and top bar. It can also be renamed
+      # in the app, but the free plan's disk resets, so set it here to keep it.
+      - key: PROJECT_NAME
+        value: Default project
       # Optional: import Azure DevOps work items as requirements. The org URL
       # looks like https://dev.azure.com/your-org; the PAT needs Work Items (Read).
       - key: ADO_ORG_URL
