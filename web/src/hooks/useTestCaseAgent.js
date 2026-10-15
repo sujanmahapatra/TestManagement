@@ -97,7 +97,11 @@ export function useTestCaseAgent({ agentOptions, notify }) {
           return { ...prev, files: [...prev.files, ...added] };
         });
         if (!quiet) {
-          const notes = [skipped > 0 && `${skipped} more frames were not rendered; link a single frame to include it.`].filter(Boolean);
+          const skippedNote =
+            type === 'ado'
+              ? `${skipped} work ${skipped === 1 ? 'item was' : 'items were'} not found or not readable.`
+              : `${skipped} more frames were not rendered; link a single frame to include it.`;
+          const notes = [skipped > 0 && skippedNote].filter(Boolean);
           notify?.({ kind: 'info', message: `Added ${label}.${notes.length ? ` ${notes.join(' ')}` : ''}` });
         }
         return kept;

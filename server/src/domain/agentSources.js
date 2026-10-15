@@ -1,7 +1,7 @@
 import { config } from '../config.js';
 import { logger } from '../logger.js';
 import { atlassianTarget } from '../clients/atlassian.js';
-import { requestWithRetry } from '../clients/http.js';
+import { patHeader, requestWithRetry } from '../clients/http.js';
 import { AppError } from '../utils/errors.js';
 import { AGENT_FILE_TYPES } from './testCase.js';
 import { htmlToText } from './officeText.js';
@@ -150,6 +150,102 @@ export async function fetchConfluencePage(sessionId, ref) {
   const text = `${page.title}\nSpace: ${page.space?.name ?? page.space?.key ?? ''}\n\n${htmlToText(page.body?.storage?.value)}`;
   const safeTitle = page.title.replace(/[\\/:*?"<>|]+/g, ' ').slice(0, 80);
   return { label: page.title, attachments: [textAttachment(`${safeTitle}.txt`, text)] };
+}
+
+/* ---------------- Azure DevOps ---------------- */
+
+/**
+ * "123, 456", "#123" or work item links
+ * (dev.azure.com/org/project/_workitems/edit/123, org.visualstudio.com/…) -> ids.
+ */
+export function parseAdoIds(ref) {
+  const text = String(ref);
+  const fromLinks = [...text.matchAll(/_workitems\/(?:edit\/)?(\d+)/gi)].map((m) => m[1]);
+  const ids = fromLinks.length ? fromLinks : [...text.matchAll(/(?:^|[\s,;#])(\d{1,9})(?=$|[\s,;])/g)].map((m) => m[1]);
+  return [...new Set(ids.map(Number))];
+}
+
+const ADO_SYSTEM = 'Azure DevOps';
+const adoDescribe = (status, messages) => {
+  const detail = messages.length ? ` (${messages.join('; ')})` : '';
+  if (status === 401) return 'Azure DevOps rejected the personal access token. Check ADO_PAT is valid and has Work Items (Read) scope.';
+  if (status === 403) return `The token's account cannot read these work items${detail}.`;
+  if (status === 404) return `Azure DevOps could not find that work item${detail}. Check the id and ADO_ORG_URL.`;
+  return `Azure DevOps returned an error (${status})${detail}.`;
+};
+const adoMessages = (body) => {
+  try {
+    return [JSON.parse(body).message].filter(Boolean);
+  } catch {
+    return [];
+  }
+};
+
+const MEDIA_BY_EXTENSION = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', pdf: 'application/pdf' };
+
+export async function fetchAdoWorkItems(ref) {
+  const ado = config.adoSource;
+  if (!ado) throw badRef('Azure DevOps import needs ADO_ORG_URL and ADO_PAT on the server.');
+  const ids = parseAdoIds(ref);
+  if (ids.length === 0) throw badRef('Enter a work item id such as 123, or paste the work item link.');
+  if (ids.length > SOURCE_LIMITS.issues) throw badRef(`Import at most ${SOURCE_LIMITS.issues} work items at a time.`);
+
+  const base = ado.baseUrl.replace(/\/$/, '');
+  // Without the suppress header a bad token gets a 203 sign-in page, not a 401.
+  const headers = { authorization: patHeader(ado.pat), accept: 'application/json', 'x-tfs-fedauthredirect': 'Suppress' };
+  let res;
+  try {
+    res = await requestWithRetry(`${base}/_apis/wit/workitems?ids=${ids.join(',')}&$expand=all&errorPolicy=omit&api-version=${ado.apiVersion}`, {
+      system: ADO_SYSTEM,
+      describe: adoDescribe,
+      extractMessages: adoMessages,
+      headers,
+    });
+  } catch (err) {
+    if (err instanceof SyntaxError) throw badRef(adoDescribe(401, []));
+    throw err;
+  }
+
+  const items = (res?.value ?? []).filter(Boolean);
+  if (items.length === 0) throw badRef(adoDescribe(404, []));
+  const attachments = [];
+
+  for (const item of items) {
+    const f = item.fields ?? {};
+    const children = (item.relations ?? [])
+      .filter((r) => r.rel === 'System.LinkTypes.Hierarchy-Forward')
+      .map((r) => `#${r.url.split('/').pop()}`);
+    const text = [
+      `#${item.id}: ${f['System.Title'] ?? ''}`,
+      [f['System.WorkItemType'], f['System.State'], f['Microsoft.VSTS.Common.Priority'] && `priority ${f['Microsoft.VSTS.Common.Priority']}`]
+        .filter(Boolean)
+        .join(' · '),
+      f['System.AreaPath'] ? `Area: ${f['System.AreaPath']}` : '',
+      f['System.Tags'] ? `Tags: ${f['System.Tags']}` : '',
+      '',
+      'Description:',
+      htmlToText(f['System.Description']) || '(none)',
+      f['Microsoft.VSTS.Common.AcceptanceCriteria'] ? `\nAcceptance criteria:\n${htmlToText(f['Microsoft.VSTS.Common.AcceptanceCriteria'])}` : '',
+      f['Microsoft.VSTS.TCM.ReproSteps'] ? `\nRepro steps:\n${htmlToText(f['Microsoft.VSTS.TCM.ReproSteps'])}` : '',
+      children.length ? `\nChild work items: ${children.join(', ')}` : '',
+    ].join('\n');
+    attachments.push(textAttachment(`ADO-${item.id}.txt`, text));
+
+    // Mockups and specs attached to the work item are part of the requirement.
+    const files = (item.relations ?? [])
+      .filter((r) => r.rel === 'AttachedFile')
+      .map((r) => ({ url: r.url, name: r.attributes?.name ?? 'attachment', size: r.attributes?.resourceSize ?? 0 }))
+      .map((a) => ({ ...a, mediaType: MEDIA_BY_EXTENSION[a.name.split('.').pop()?.toLowerCase()] }))
+      .filter((a) => a.mediaType && a.size <= AGENT_FILE_TYPES[a.mediaType].maxBytes)
+      .slice(0, SOURCE_LIMITS.attachmentsPerIssue);
+    for (const a of files) {
+      const file = await download(`${a.url}?api-version=${ado.apiVersion}`, { authorization: headers.authorization }, a.mediaType, `ADO-${item.id} – ${a.name}`);
+      if (file) attachments.push(file);
+    }
+  }
+
+  const missing = ids.length - items.length;
+  return { label: items.map((i) => `#${i.id}`).join(', '), attachments, ...(missing > 0 && { skipped: missing }) };
 }
 
 /* ---------------- Figma ---------------- */
@@ -303,6 +399,7 @@ export async function fetchFigmaFrames(ref, frameIds = null) {
 export const availableSources = () => ({
   jira: Boolean(config.jira),
   confluence: Boolean(config.confluence),
+  ado: Boolean(config.adoSource),
   figma: Boolean(config.agent.figmaToken),
 });
 
@@ -367,6 +464,7 @@ export async function listFigmaFrames(ref) {
 export async function fetchSource(sessionId, { type, ref, frameIds }) {
   if (type === 'jira') return fetchJiraIssues(sessionId, ref);
   if (type === 'confluence') return fetchConfluencePage(sessionId, ref);
+  if (type === 'ado') return fetchAdoWorkItems(ref);
   if (type === 'figma') return fetchFigmaFrames(ref, frameIds);
   throw badRef('Unknown source type.');
 }

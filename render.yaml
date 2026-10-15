@@ -44,6 +44,12 @@ services:
         sync: false
       - key: GROQ_MODEL
         value: openai/gpt-oss-120b
+      # Optional: import Azure DevOps work items as requirements. The org URL
+      # looks like https://dev.azure.com/your-org; the PAT needs Work Items (Read).
+      - key: ADO_ORG_URL
+        sync: false
+      - key: ADO_PAT
+        sync: false
     # The free plan's disk is wiped whenever the service restarts or sleeps
     # (after 15 idle minutes), taking saved test cases with it. To keep them,
     # switch `plan` to starter and uncomment:

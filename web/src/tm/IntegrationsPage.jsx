@@ -111,9 +111,18 @@ export default function IntegrationsPage({ options }) {
           name="Azure DevOps"
           color="#0078d4"
           mark="A"
-          status={has('ado') ? 'ok' : 'off'}
-          detail="File test cases as Test Case work items, with the steps grid filled."
-          help={has('ado') ? null : 'Set ADO_ORG_URL, ADO_PROJECT and ADO_PAT, and add ado to DESTINATIONS.'}
+          status={has('ado') || sources.ado ? 'ok' : 'off'}
+          detail={[
+            sources.ado ? 'Work items can be imported as requirements.' : 'Import work items (user stories, bugs) as requirements.',
+            has('ado') ? 'Test cases are filed as Test Case work items, with the steps grid filled.' : 'File test cases as Test Case work items.',
+          ].join(' ')}
+          help={
+            has('ado')
+              ? null
+              : sources.ado
+                ? 'To also file test cases there, set ADO_PROJECT and add ado to DESTINATIONS.'
+                : 'Set ADO_ORG_URL and ADO_PAT (Work Items: Read) to import work items; for filing, also set ADO_PROJECT and add ado to DESTINATIONS.'
+          }
         />
       </Box>
     </Box>

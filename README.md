@@ -85,6 +85,9 @@ test.
      description, any acceptance-criteria field, subtasks, and up to 3
      image or PDF attachments per issue.
    - **Confluence page:** a page link or id. Fetches the page text.
+   - **Azure DevOps work item:** ids (`123, 456`, `#123`) or work item links
+     (up to 10). Fetches the title, type, state, description, acceptance
+     criteria, repro steps, child items, and up to 3 image or PDF attachments.
    - **Figma design:** a link to a frame renders that frame. A link to a page
      or section renders up to 10 frames inside it.
 
@@ -92,8 +95,9 @@ test.
    and can be removed before generating. Jira and Confluence use the same
    Atlassian connection as filing, and need `jira` or `confluence` in
    `DESTINATIONS`. Confluence import adds the `read:confluence-content.all`
-   scope, so an existing session must reconnect once. Figma needs
-   `FIGMA_TOKEN`.
+   scope, so an existing session must reconnect once. Azure DevOps needs
+   `ADO_ORG_URL` and `ADO_PAT` (a PAT with **Work Items: Read**); it does not
+   need `ado` in `DESTINATIONS` or a project. Figma needs `FIGMA_TOKEN`.
 2. **Settings.** Format: *test cases (steps)*, with an expected result per
    step; *test cases (text)*; or *BDD (Gherkin)*. Optionally limit the types
    (Functional, UI/UX, Security, Performance, Compatibility, Accessibility)

@@ -243,6 +243,7 @@ export function SourceTile({ label, color, mark, size = 44 }) {
 export const SOURCE_TILES = [
   { key: 'jira', label: 'Jira', color: '#2684ff', mark: 'J' },
   { key: 'confluence', label: 'Confluence', color: '#1868db', mark: 'C' },
+  { key: 'ado', label: 'Azure DevOps', color: '#0078d4', mark: 'A' },
   { key: 'figma', label: 'Figma', color: '#a259ff', mark: 'F' },
   { key: 'image', label: 'Images', color: '#0ea5e9', mark: '▣' },
   { key: 'pdf', label: 'PDF', color: '#e5484d', mark: 'PDF' },

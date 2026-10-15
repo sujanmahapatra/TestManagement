@@ -75,6 +75,12 @@ export const LINK_SOURCES = [
     hint: 'Fetches the page text.',
   },
   {
+    key: 'ado',
+    label: 'Azure DevOps work item',
+    placeholder: '123, 456 or a work item link',
+    hint: 'Fetches the description, acceptance criteria, repro steps, and image or PDF attachments.',
+  },
+  {
     key: 'figma',
     label: 'Figma design',
     placeholder: 'https://www.figma.com/design/…?node-id=…',
@@ -125,6 +131,7 @@ export function detectLinks(text) {
     if (/figma\.com\/(file|design|proto|board)\//.test(url)) links.push({ type: 'figma', url });
     else if (/\/wiki\/.*(\/pages\/\d+|pageId=\d+)/.test(url)) links.push({ type: 'confluence', url });
     else if (/\/browse\/[A-Z][A-Z0-9_]+-\d+|selectedIssue=[A-Z][A-Z0-9_]+-\d+/.test(url)) links.push({ type: 'jira', url });
+    else if (/(dev\.azure\.com|visualstudio\.com)\/.*_workitems\/(edit\/)?\d+/i.test(url)) links.push({ type: 'ado', url });
   }
   return links;
 }

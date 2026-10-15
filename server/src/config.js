@@ -139,6 +139,15 @@ const schema = z.object({
   excel: excelSchema.optional(),
   ado: workItemSchema('ADO').optional(),
   tfs: workItemSchema('TFS').optional(),
+  // Reading work items as requirements needs only the organization and a PAT
+  // with Work Items (Read) -- not the "ado" destination, nor a project.
+  adoSource: z
+    .object({
+      baseUrl: z.string().url('ADO_ORG_URL must be an absolute URL'),
+      pat: z.string().min(1),
+      apiVersion: z.string().min(1),
+    })
+    .optional(),
 })
   // LLM generation without a key would fail silently into the template
   // fallback on every request; fail at boot instead.
@@ -262,6 +271,15 @@ function load() {
           extraFields: process.env.ADO_EXTRA_FIELDS,
         }
       : undefined,
+
+    adoSource:
+      process.env.ADO_ORG_URL && process.env.ADO_PAT
+        ? {
+            baseUrl: process.env.ADO_ORG_URL,
+            pat: process.env.ADO_PAT,
+            apiVersion: process.env.ADO_API_VERSION || '7.0',
+          }
+        : undefined,
 
     tfs: enabled('tfs')
       ? {

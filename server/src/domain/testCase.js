@@ -359,7 +359,7 @@ export const moveCasesSchema = caseIdsSchema.extend({ folderId: z.string().max(4
 
 /** POST /api/agent/sources: where to fetch a requirement from. */
 export const agentSourceSchema = z.object({
-  type: z.enum(['jira', 'confluence', 'figma'], { errorMap: () => ({ message: 'Choose Jira, Confluence or Figma.' }) }),
+  type: z.enum(['jira', 'confluence', 'ado', 'figma'], { errorMap: () => ({ message: 'Choose Jira, Confluence, Azure DevOps or Figma.' }) }),
   ref: z.string({ required_error: 'Enter a key or paste a link.' }).trim().min(1, 'Enter a key or paste a link.').max(2000),
   // Figma: the frames chosen in the picker; all (up to the limit) when absent.
   frameIds: z.array(z.string().max(60)).max(50).optional(),

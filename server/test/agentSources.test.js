@@ -16,10 +16,12 @@ process.env.JIRA_PROJECT_KEY = 'QA';
 process.env.CONFLUENCE_SPACE_KEY = 'QADOCS';
 process.env.ANTHROPIC_API_KEY = 'test-key';
 process.env.FIGMA_TOKEN = 'figd_test';
+process.env.ADO_ORG_URL = 'https://dev.azure.com/acme';
+process.env.ADO_PAT = 'ado-test-pat';
 process.env.LOG_LEVEL = 'silent';
 
 const { docxToText, pptxToText, xlsxToText, htmlToText } = await import('../src/domain/officeText.js');
-const { parseJiraKeys, parseConfluencePageId, parseFigmaUrl, fetchFigmaFrames, availableSources, figmaStructure } = await import(
+const { parseJiraKeys, parseConfluencePageId, parseFigmaUrl, parseAdoIds, fetchAdoWorkItems, fetchFigmaFrames, availableSources, figmaStructure } = await import(
   '../src/domain/agentSources.js'
 );
 const { runAgent, setAgentClient } = await import('../src/domain/testCaseAgent.js');
@@ -143,7 +145,7 @@ test('Figma links give the file key and the frame id', () => {
 });
 
 test('the server reports which link sources it can use', () => {
-  assert.deepEqual(availableSources(), { jira: true, confluence: true, figma: true });
+  assert.deepEqual(availableSources(), { jira: true, confluence: true, ado: true, figma: true });
 });
 
 /* ---------------- Figma structure ---------------- */
@@ -244,4 +246,65 @@ test('a Figma page link renders the frames inside it as PNG attachments', async 
   assert.equal(result.label, 'Checkout (2 frames)');
   assert.ok(seen.filter((s) => s.url.startsWith('https://api.figma.com')).every((s) => s.token === config.agent.figmaToken));
   assert.match(seen[1].url, /ids=3%3A1%2C3%3A3/);
+});
+
+/* ---------------- Azure DevOps ---------------- */
+
+test('Azure DevOps ids come from ids, #ids and work item links', () => {
+  assert.deepEqual(parseAdoIds('123, 456'), [123, 456]);
+  assert.deepEqual(parseAdoIds('#77'), [77]);
+  assert.deepEqual(parseAdoIds('https://dev.azure.com/acme/Payments/_workitems/edit/901/'), [901]);
+  assert.deepEqual(parseAdoIds('https://acme.visualstudio.com/Payments/_workitems/edit/12 and https://dev.azure.com/acme/P/_workitems/edit/12'), [12]);
+  assert.deepEqual(parseAdoIds('no ids here'), []);
+});
+
+test('an Azure DevOps work item becomes text with its criteria, plus its image attachments', async (t) => {
+  const png = Buffer.from('89504e470d0a1a0a', 'hex');
+  const seen = [];
+  t.mock.method(globalThis, 'fetch', async (url, init) => {
+    seen.push({ url: String(url), auth: init?.headers?.authorization });
+    if (String(url).includes('/_apis/wit/workitems?')) {
+      return new Response(
+        JSON.stringify({
+          value: [
+            {
+              id: 42,
+              fields: {
+                'System.Title': 'Apply a coupon',
+                'System.WorkItemType': 'User Story',
+                'System.State': 'Active',
+                'Microsoft.VSTS.Common.Priority': 2,
+                'System.Description': '<div>Shoppers apply <b>one</b> coupon.</div>',
+                'Microsoft.VSTS.Common.AcceptanceCriteria': '<ul><li>Expired codes show an error</li></ul>',
+              },
+              relations: [
+                { rel: 'AttachedFile', url: 'https://dev.azure.com/acme/_apis/wit/attachments/abc', attributes: { name: 'mockup.png', resourceSize: 8 } },
+                { rel: 'AttachedFile', url: 'https://dev.azure.com/acme/_apis/wit/attachments/def', attributes: { name: 'notes.zip', resourceSize: 8 } },
+                { rel: 'System.LinkTypes.Hierarchy-Forward', url: 'https://dev.azure.com/acme/_apis/wit/workItems/43' },
+              ],
+            },
+          ],
+        }),
+        { status: 200 },
+      );
+    }
+    return new Response(png, { status: 200 });
+  });
+
+  const result = await fetchAdoWorkItems('https://dev.azure.com/acme/Payments/_workitems/edit/42');
+  assert.equal(result.label, '#42');
+  assert.deepEqual(result.attachments.map((a) => a.name), ['ADO-42.txt', 'ADO-42 – mockup.png']);
+  const text = Buffer.from(result.attachments[0].data, 'base64').toString('utf8');
+  assert.match(text, /#42: Apply a coupon/);
+  assert.match(text, /User Story · Active · priority 2/);
+  assert.match(text, /Shoppers apply one coupon\./);
+  assert.match(text, /Acceptance criteria:\n.*Expired codes show an error/);
+  assert.match(text, /Child work items: #43/);
+  assert.match(seen[0].url, /^https:\/\/dev\.azure\.com\/acme\/_apis\/wit\/workitems\?ids=42&\$expand=all/);
+  assert.ok(seen.every((s) => s.auth === `Basic ${Buffer.from(':ado-test-pat').toString('base64')}`));
+});
+
+test('a rejected Azure DevOps token says what to fix', async (t) => {
+  t.mock.method(globalThis, 'fetch', async () => new Response('{"message":"unauthorized"}', { status: 401 }));
+  await assert.rejects(fetchAdoWorkItems('5'), /rejected the personal access token/);
 });

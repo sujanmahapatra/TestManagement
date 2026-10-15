@@ -4,15 +4,15 @@ import FigmaPicker from './FigmaPicker';
 import { AGENT_ACCEPT, AGENT_MAX_FILES, LINK_SOURCES } from '../domain/agent';
 
 /**
- * "Add Requirements": upload files, or pull a Jira issue, Confluence page or
- * Figma design in as context. `children` renders the trigger, given an
+ * "Add Requirements": upload files, or pull a Jira issue, Confluence page,
+ * Azure DevOps work item or Figma design in as context. `children` renders the trigger, given an
  * `open(event)` callback, so the same menu serves the start screen and the
  * refine box.
  */
 export default function AddRequirements({ agent, options, children, anchorOrigin, transformOrigin }) {
   const fileInput = useRef(null);
   const [anchor, setAnchor] = useState(null);
-  const [linking, setLinking] = useState(null); // 'jira' | 'confluence'
+  const [linking, setLinking] = useState(null); // 'jira' | 'confluence' | 'ado'
   const [ref, setRef] = useState('');
   const [figmaOpen, setFigmaOpen] = useState(false);
   const sources = options.agent.sources ?? {};
@@ -61,7 +61,7 @@ export default function AddRequirements({ agent, options, children, anchorOrigin
             {s.label}
             {!sources[s.key] && (
               <Box component="span" sx={{ ml: 2, fontSize: 12, color: 'var(--tm-faint)' }}>
-                {s.key === 'figma' ? 'needs FIGMA_TOKEN' : `enable ${s.key} on the server`}
+                {s.key === 'figma' ? 'needs FIGMA_TOKEN' : s.key === 'ado' ? 'needs ADO_ORG_URL and ADO_PAT' : `enable ${s.key} on the server`}
               </Box>
             )}
           </MenuItem>

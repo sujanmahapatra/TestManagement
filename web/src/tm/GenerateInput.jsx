@@ -11,6 +11,7 @@ export function SourceMark({ file }) {
   const style = {
     jira: { bg: '#2684ff', mark: 'J' },
     confluence: { bg: '#1868db', mark: 'C' },
+    ado: { bg: '#0078d4', mark: 'A' },
     figma: { bg: '#a259ff', mark: 'F' },
   }[origin];
   if (!style) return <PaperclipIcon size={14} sx={{ color: 'var(--tm-muted)' }} />;
