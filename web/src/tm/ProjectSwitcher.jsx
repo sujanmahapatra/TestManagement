@@ -38,12 +38,12 @@ function NameDialog({ open, title, initial, action, onClose, onSubmit }) {
 
 /**
  * The project box in the left menu: shows the open project and switches
- * between projects, creates, renames and deletes them. Each project has its
+ * between projects, renames and deletes them. Each project has its
  * own folders and test cases.
  */
 export default function ProjectSwitcher({ repo }) {
   const [anchor, setAnchor] = useState(null);
-  const [dialog, setDialog] = useState(null); // 'new' | 'rename' | 'delete'
+  const [dialog, setDialog] = useState(null); // 'rename' | 'delete'
   // A dialog opens once the menu has finished closing, so the menu's focus
   // trap is gone and the dialog's field can take focus.
   const [pending, setPending] = useState(null);
@@ -101,9 +101,6 @@ export default function ProjectSwitcher({ repo }) {
           </MenuItem>
         ))}
         <Divider />
-        <MenuItem onClick={() => { setAnchor(null); setPending('new'); }} sx={{ fontSize: 13.5, color: 'var(--tm-primary)', fontWeight: 500 }}>
-          + New project
-        </MenuItem>
         <MenuItem onClick={() => { setAnchor(null); setPending('rename'); }} sx={{ fontSize: 13.5 }}>
           Rename “{current?.name ?? repo.projectName}”
         </MenuItem>
@@ -112,14 +109,6 @@ export default function ProjectSwitcher({ repo }) {
         </MenuItem>
       </Menu>
 
-      <NameDialog
-        open={dialog === 'new'}
-        title="New project"
-        initial=""
-        action="Create"
-        onClose={close}
-        onSubmit={async (name) => Boolean(await repo.createProject(name))}
-      />
       <NameDialog
         open={dialog === 'rename'}
         title="Rename project"
