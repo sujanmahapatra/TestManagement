@@ -14,3 +14,6 @@ server/data/
 __pycache__/
 .pytest_cache/
 .deepeval/
+eval/.cache/
+eval/report.json
+eval/report.html
