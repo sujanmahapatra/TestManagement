@@ -240,6 +240,11 @@ export default function TestManagement({ onSignOut }) {
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '232px 1fr' }, minHeight: 0 }}>
         {/* navigation */}
         <Box component="nav" aria-label="Main" sx={{ display: { xs: 'none', sm: 'flex' }, flexDirection: 'column', gap: 0.25, px: 1.25, py: 1.5, bgcolor: '#f8f9fb', borderRight: '1px solid var(--tm-rule)' }}>
+          <Box sx={{ px: 1.25, pb: 0.75, fontSize: 12, fontWeight: 600, color: 'var(--tm-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>Projects</Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mx: 0.25, mb: 1.5, px: 1, py: 0.75, border: '1px solid var(--tm-rule-strong)', borderRadius: '6px', bgcolor: 'var(--tm-surface)', fontSize: 13.5, color: 'var(--tm-ink)' }}>
+            <Box sx={{ width: 20, height: 20, borderRadius: '5px', border: '1.5px solid var(--tm-ink-soft)', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700, flex: 'none' }}>+</Box>
+            Default project
+          </Box>
           {NAV.map((item) => (
             <NavItem key={item.key} item={item} active={page === item.key} onClick={() => setPage(item.key)} />
           ))}
