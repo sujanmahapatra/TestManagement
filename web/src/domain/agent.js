@@ -64,8 +64,8 @@ export function fileBadge(file) {
 export const LINK_SOURCES = [
   {
     key: 'jira',
-    label: 'Jira issue',
-    placeholder: 'QA-123, QA-124 or an issue link',
+    label: 'Jira User Story',
+    placeholder: 'SCRUM-12, SCRUM-13 or a story link',
     hint: 'Fetches the description, acceptance criteria, and image or PDF attachments.',
   },
   {
