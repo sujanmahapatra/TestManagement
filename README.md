@@ -48,7 +48,7 @@ reshape what comes out:
 | `parameters` | A data table. Each row becomes its own case, with `{{column}}` substituted in the name, description and expected result. |
 
 They compose: 3 data rows with variants on produces 12 cases (3 × (1 happy
-path + 3 variants)), filed as 12 issues or as one workbook with 12 sheets.
+path + 3 variants)), filed as 12 issues or as one Excel sheet holding all 12.
 
 Platforms, test types and the variant catalogue live in
 `server/config/generation.json` — not in code. Edit that file to retune the
@@ -134,7 +134,7 @@ test.
    *edited*, **Show changes only** filters to them, and the agent says what it
    changed and what it removed. Cases left unchanged keep your manual edits.
 6. **Add.** Files the selected cases to the chosen destination exactly as
-   reviewed: one issue or work item per case, or one sheet per case in Excel.
+   reviewed: one issue or work item per case, or one Excel sheet with every case (one row per step).
 
 Agent cases carry `priority`, `category`, `scenario`, `tags`, `description`
 and `stepResults` (one expected result per step). Every exporter uses them:
@@ -590,7 +590,7 @@ Jira ADF structure, Confluence escaping, the TCM steps XML and patch
 document, and that the Excel export is a real xlsx container — plus test
 types, negative variants, parameter substitution, extra-field merging
 (including that extras cannot hijack owned fields), edited-case validation,
-one sheet per case with legal unique names, and requirement import from
+every case on one sheet with a row per step, and requirement import from
 every source kind (sections, IDs, CSV exports, Gherkin outlines) through to
 generation and the case limit. The agent tests replay a scripted model
 stream, so they need no API key. They check the request sent to the model,

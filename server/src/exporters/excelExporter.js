@@ -8,107 +8,116 @@ import { hasStepResults } from '../domain/caseFormat.js';
  *
  * Unlike every other destination this one needs no credentials and performs
  * no network call -- the result is a file handed straight back to the
- * browser, which is why the service distinguishes `kind: 'file'`. Multiple
- * generated cases become multiple sheets in one workbook.
+ * browser, which is why the service distinguishes `kind: 'file'`.
+ *
+ * Every case goes on one "Test Cases" sheet, one row per step, the layout
+ * test management tools import (Jira/Xray, TestRail, Zephyr): the case's
+ * fields fill its first row, and cases are banded so each reads as a block.
+ * Datasets, when any case has one, go on a "Test Data" sheet.
  */
 
 const HEADER_FILL = 'FF1F5FA8';
+const BAND_FILL = 'FFF3F6FA';
 
-/** Excel sheet names are capped at 31 chars and reject []:*?/\ */
-function toSheetName(testCase, index, taken) {
-  const cleaned = testCase.title.replace(/[[\]:*?/\\]/g, ' ').replace(/\s+/g, ' ').trim();
-  let name = cleaned.slice(0, 28) || `Case ${index + 1}`;
+const COLUMNS = [
+  { header: 'ID', key: 'id', width: 10 },
+  { header: 'Title', key: 'title', width: 42 },
+  { header: 'Scenario', key: 'scenario', width: 26 },
+  { header: 'Description', key: 'description', width: 40 },
+  { header: 'Preconditions', key: 'preconditions', width: 36 },
+  { header: 'Step #', key: 'step', width: 7 },
+  { header: 'Step', key: 'action', width: 52 },
+  { header: 'Expected result', key: 'expected', width: 48 },
+  { header: 'Priority', key: 'priority', width: 10 },
+  { header: 'Type', key: 'category', width: 14 },
+  { header: 'Platform', key: 'platform', width: 12 },
+  { header: 'Environments', key: 'environments', width: 26 },
+  { header: 'Tags', key: 'tags', width: 20 },
+  { header: 'Linked issues', key: 'links', width: 16 },
+];
 
-  // Variants of one case often share a title prefix, so collisions are the
-  // norm rather than the exception.
-  let suffix = 2;
-  const base = name;
-  while (taken.has(name.toLowerCase())) {
-    name = `${base.slice(0, 28 - String(suffix).length - 1)} ${suffix}`;
-    suffix += 1;
-  }
-  taken.add(name.toLowerCase());
-  return name;
+const styleHeader = (row) => {
+  row.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_FILL } };
+  row.alignment = { vertical: 'middle', wrapText: true };
+  row.height = 22;
+};
+
+const numbered = (items) => (items ?? []).map((p, i) => `${i + 1}. ${p}`).join('\n');
+
+/** The expected result shown beside each step. */
+function expectedFor(testCase, i) {
+  // Agent cases expect something per step. Template cases assert only at the
+  // final step, matching how a tester reads the grid: act, act, verify.
+  if (hasStepResults(testCase)) return testCase.stepResults[i] ?? '';
+  return i === testCase.steps.length - 1 ? numbered(testCase.expectedResults) : '';
 }
 
-function addMetaRow(sheet, label, value) {
-  const row = sheet.addRow([label, value]);
-  row.getCell(1).font = { bold: true, color: { argb: 'FF5E6A7A' } };
-  row.getCell(2).alignment = { wrapText: true, vertical: 'top' };
-  return row;
-}
-
-function addSheet(workbook, testCase, index, taken) {
-  const sheet = workbook.addWorksheet(toSheetName(testCase, index, taken));
-
-  sheet.columns = [
-    { key: 'a', width: 16 },
-    { key: 'b', width: 72 },
-    { key: 'c', width: 56 },
-  ];
-
-  addMetaRow(sheet, 'Title', testCase.title);
-  if (testCase.description) addMetaRow(sheet, 'Description', testCase.description);
-  if (testCase.scenario) addMetaRow(sheet, 'Scenario', testCase.scenario);
-  if (testCase.priority) addMetaRow(sheet, 'Priority', testCase.priority);
-  if (testCase.category) addMetaRow(sheet, 'Category', testCase.category);
-  if (testCase.tags?.length) addMetaRow(sheet, 'Tags', testCase.tags.join(', '));
-  addMetaRow(sheet, 'Platform', testCase.platformLabel);
-  addMetaRow(sheet, 'Test type', testCase.testTypeLabel ?? '');
-  addMetaRow(sheet, 'Variant', testCase.variant ?? 'happy-path');
-  if (testCase.parameters) {
-    addMetaRow(
-      sheet,
-      'Parameters',
-      Object.entries(testCase.parameters).map(([k, v]) => `${k} = ${v}`).join('\n'),
-    );
-  }
-  addMetaRow(sheet, 'Environments', testCase.environments.join('\n'));
-  addMetaRow(sheet, 'Preconditions', testCase.preconditions.map((p, i) => `${i + 1}. ${p}`).join('\n'));
-  sheet.addRow([]);
-
-  const header = sheet.addRow(['Step', 'Action', 'Expected result']);
-  header.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-  header.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_FILL } };
-  header.alignment = { vertical: 'middle' };
-  header.height = 20;
-
-  testCase.steps.forEach((action, i) => {
-    // Agent cases expect something per step. Template cases assert only at
-    // the final step, matching how a tester reads the grid: act, act, verify.
-    const isLast = i === testCase.steps.length - 1;
-    const expected = hasStepResults(testCase)
-      ? testCase.stepResults[i] ?? ''
-      : isLast
-        ? testCase.expectedResults.map((r, n) => `${n + 1}. ${r}`).join('\n')
-        : '';
-    const row = sheet.addRow([i + 1, action, expected]);
+function addCaseRows(sheet, testCase, id, banded) {
+  const steps = testCase.steps.length ? testCase.steps : [''];
+  steps.forEach((action, i) => {
+    const first = i === 0;
+    const row = sheet.addRow({
+      id: first ? id : '',
+      title: first ? testCase.title : '',
+      scenario: first ? testCase.scenario ?? '' : '',
+      description: first ? testCase.description ?? '' : '',
+      preconditions: first ? numbered(testCase.preconditions) : '',
+      step: testCase.steps.length ? i + 1 : '',
+      action,
+      expected: expectedFor(testCase, i),
+      priority: first ? testCase.priority ?? '' : '',
+      category: first ? testCase.category ?? testCase.testTypeLabel ?? '' : '',
+      platform: first ? testCase.platformLabel ?? '' : '',
+      environments: first ? (testCase.environments ?? []).join('\n') : '',
+      tags: first ? (testCase.tags ?? []).join(', ') : '',
+      links: first ? (testCase.links ?? []).join(', ') : '',
+    });
     row.alignment = { wrapText: true, vertical: 'top' };
-    row.getCell(1).alignment = { horizontal: 'center', vertical: 'top' };
+    row.getCell('step').alignment = { horizontal: 'center', vertical: 'top' };
+    if (first) row.getCell('title').font = { bold: true };
+    if (banded) row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: BAND_FILL } };
   });
+}
 
-  if (testCase.dataset) {
-    sheet.addRow([]);
-    const dataHeader = sheet.addRow(['Run', ...testCase.dataset.columns]);
-    dataHeader.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    dataHeader.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_FILL } };
-    testCase.dataset.rows.forEach((row, i) => sheet.addRow([`Run ${i + 1}`, ...row]));
+function addDataSheet(workbook, cases, ids) {
+  const withData = cases.map((tc, i) => [tc, ids[i]]).filter(([tc]) => tc.dataset?.columns?.length);
+  if (!withData.length) return;
+  const sheet = workbook.addWorksheet('Test Data');
+  sheet.columns = [{ width: 10 }, { width: 42 }, { width: 8 }, { width: 60 }];
+  styleHeader(sheet.addRow(['ID', 'Title', 'Run', 'Values']));
+  for (const [tc, id] of withData) {
+    tc.dataset.rows.forEach((values, r) => {
+      const row = sheet.addRow([
+        r === 0 ? id : '',
+        r === 0 ? tc.title : '',
+        r + 1,
+        tc.dataset.columns.map((c, n) => `${c} = ${values[n] ?? ''}`).join('\n'),
+      ]);
+      row.alignment = { wrapText: true, vertical: 'top' };
+    });
   }
-
-  // Freeze the header so long step lists stay readable while scrolling.
-  sheet.views = [{ state: 'frozen', ySplit: header.number }];
-  return sheet;
+  sheet.views = [{ state: 'frozen', ySplit: 1 }];
 }
 
 export async function buildWorkbook(testCases) {
   const cases = Array.isArray(testCases) ? testCases : [testCases];
 
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'Test Case Generator';
+  workbook.creator = 'Testcase Generator';
   workbook.created = new Date();
 
-  const taken = new Set();
-  cases.forEach((testCase, index) => addSheet(workbook, testCase, index, taken));
+  const sheet = workbook.addWorksheet(config.excel?.sheetName || 'Test Cases');
+  sheet.columns = COLUMNS;
+  styleHeader(sheet.getRow(1));
+
+  // Saved cases keep their repository key; fresh ones are numbered in order.
+  const ids = cases.map((tc, i) => tc.key ?? `TC-${i + 1}`);
+  cases.forEach((tc, i) => addCaseRows(sheet, tc, ids[i], i % 2 === 1));
+
+  sheet.views = [{ state: 'frozen', ySplit: 1, xSplit: 2 }];
+  sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: COLUMNS.length } };
+  addDataSheet(workbook, cases, ids);
   return workbook;
 }
 

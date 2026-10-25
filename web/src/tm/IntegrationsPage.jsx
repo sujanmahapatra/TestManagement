@@ -115,7 +115,7 @@ export default function IntegrationsPage({ options }) {
           color="#217346"
           mark="X"
           status={has('excel') ? 'ok' : 'off'}
-          detail="Download test cases as an .xlsx workbook, one sheet per case."
+          detail="Download test cases as an .xlsx workbook: every case on one sheet, one row per step."
         />
         <Card
           name="Azure DevOps"

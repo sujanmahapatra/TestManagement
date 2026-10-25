@@ -196,16 +196,33 @@ test('an edited test case cannot smuggle in an unknown platform', () => {
 
 /* ---------------- excel, multiple cases ---------------- */
 
-test('each generated case becomes its own sheet, with legal unique names', async () => {
+test('every generated case goes on one sheet, one row per step, numbered in order', async () => {
   const cases = generate({ ...VALID, negativeVariants: true });
   const workbook = await buildWorkbook(cases);
 
-  assert.equal(workbook.worksheets.length, 4);
+  assert.equal(workbook.worksheets.length, 1, 'no dataset, so only the test case sheet');
+  const sheet = workbook.worksheets[0];
+  const totalSteps = cases.reduce((n, c) => n + c.steps.length, 0);
+  assert.equal(sheet.rowCount, 1 + totalSteps);
 
-  const names = workbook.worksheets.map((s) => s.name);
-  assert.equal(new Set(names).size, names.length, 'sheet names must be unique');
-  assert.ok(names.every((n) => n.length <= 31), 'excel caps sheet names at 31 chars');
-  assert.ok(names.every((n) => !/[[\]:*?/\\]/.test(n)), 'excel rejects these characters');
+  const ids = [];
+  sheet.eachRow((row, n) => n > 1 && row.getCell('id').value && ids.push(row.getCell('id').value));
+  assert.deepEqual(ids, cases.map((_, i) => `TC-${i + 1}`));
+  assert.equal(sheet.getRow(2).getCell('title').value, cases[0].title);
+});
+
+test('saved cases keep their keys, and datasets go on a Test Data sheet', async () => {
+  const [first, second] = generate({ ...VALID, negativeVariants: true });
+  const workbook = await buildWorkbook([
+    { ...first, key: 'TC-41', dataset: { columns: ['email', 'password'], rows: [['a@example.com', 'x'], ['b@example.com', 'y']] } },
+    { ...second, key: 'TC-42' },
+  ]);
+  assert.equal(workbook.worksheets.length, 2);
+  assert.equal(workbook.worksheets[0].getRow(2).getCell('id').value, 'TC-41');
+  const data = workbook.getWorksheet('Test Data');
+  assert.equal(data.rowCount, 3);
+  assert.equal(data.getRow(2).getCell(1).value, 'TC-41');
+  assert.equal(data.getRow(3).getCell(4).value, 'email = b@example.com\npassword = y');
 });
 
 test('the filename reports how many cases are in the workbook', () => {

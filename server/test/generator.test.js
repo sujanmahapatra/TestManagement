@@ -204,16 +204,11 @@ test('ado and tfs share the adapter but differ in target', () => {
 test('excel workbook has a header row and one row per step', async () => {
   const workbook = await buildWorkbook([CASE]);
   const sheet = workbook.worksheets[0];
-
-  // Locate the header rather than assuming a row index -- the metadata rows
-  // above it vary with the test case.
-  let headerRow = null;
-  sheet.eachRow((row) => {
-    if (row.getCell(1).value === 'Step' && row.getCell(3).value === 'Expected result') headerRow = row;
-  });
-  assert.ok(headerRow, 'a Step/Action/Expected result header must exist');
-  assert.equal(sheet.rowCount, headerRow.number + CASE.steps.length);
-  assert.equal(sheet.getRow(headerRow.number + 1).getCell(2).value, CASE.steps[0]);
+  const header = sheet.getRow(1).values.slice(1);
+  assert.deepEqual(header.slice(0, 8), ['ID', 'Title', 'Scenario', 'Description', 'Preconditions', 'Step #', 'Step', 'Expected result']);
+  assert.equal(sheet.rowCount, 1 + CASE.steps.length);
+  assert.equal(sheet.getRow(2).getCell('action').value, CASE.steps[0]);
+  assert.equal(sheet.getRow(2).getCell('step').value, 1);
 });
 
 test('excel writes a real xlsx container', async () => {

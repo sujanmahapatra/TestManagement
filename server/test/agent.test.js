@@ -489,11 +489,11 @@ test('Jira inlines per-step expectations instead of a separate list', () => {
 test('Excel puts each expectation on its own step row', async () => {
   const workbook = await buildWorkbook([AGENT_CASE]);
   const sheet = workbook.worksheets[0];
-  const rows = [];
-  sheet.eachRow((row) => rows.push(row.values.slice(1)));
-  const stepRows = rows.filter((r) => typeof r[0] === 'number');
-  assert.deepEqual(stepRows.map((r) => r[2] ?? ''), ['', 'The dashboard is shown']);
-  assert.ok(rows.some((r) => r[0] === 'Priority' && r[1] === 'high'));
+  const steps = [2, 3].map((n) => sheet.getRow(n));
+  assert.deepEqual(steps.map((r) => r.getCell('expected').value ?? ''), ['', 'The dashboard is shown']);
+  // The case's fields fill its first row only.
+  assert.equal(steps[0].getCell('priority').value, 'high');
+  assert.equal(steps[1].getCell('priority').value, '');
 });
 
 test('choosing Regression, Sanity or Unit tells the agent what each means; the default lets it choose', async () => {
