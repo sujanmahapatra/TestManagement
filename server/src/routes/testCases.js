@@ -10,7 +10,7 @@ import { listDestinations } from '../exporters/index.js';
 import { listPlatforms, listTestTypes, listNegativeVariants } from '../domain/generationConfig.js';
 import { activeStrategy } from '../domain/generatorStrategy.js';
 import { listRequirementSources } from '../domain/requirementSources.js';
-import { AGENT_FILE_TYPES, AGENT_LIMITS, CATEGORIES, LANGUAGES, PRIORITIES } from '../domain/testCase.js';
+import { AGENT_FILE_TYPES, AGENT_LIMITS, CATEGORIES, DEFAULT_CATEGORIES, LANGUAGES, PRIORITIES } from '../domain/testCase.js';
 import { config } from '../config.js';
 import { availableSources } from '../domain/agentSources.js';
 import { checkJira } from '../domain/jiraCheck.js';
@@ -54,6 +54,7 @@ testCaseRoutes.get('/options', (_req, res) => {
         { key: 'bdd', label: 'BDD test cases (Gherkin)' },
       ],
       categories: CATEGORIES,
+      defaultCategories: DEFAULT_CATEGORIES,
       priorities: PRIORITIES,
       languages: LANGUAGES,
       fileTypes: Object.keys(AGENT_FILE_TYPES),

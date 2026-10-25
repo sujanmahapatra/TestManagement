@@ -8,7 +8,7 @@ import { config } from '../config.js';
 import { logger } from '../logger.js';
 import { AppError } from '../utils/errors.js';
 import { generationConfig } from './generationConfig.js';
-import { AGENT_FILE_TYPES, CATEGORIES, DATASET_LIMITS, EDIT_LIMITS, PRIORITIES } from './testCase.js';
+import { AGENT_FILE_TYPES, CATEGORIES, DATASET_LIMITS, DEFAULT_CATEGORIES, EDIT_LIMITS, PRIORITIES } from './testCase.js';
 import { relatedCases, titlesIn } from './repository.js';
 import { groqChat, groqStream, supportsStrictSchema } from '../clients/groq.js';
 import { docxToText, pdfToText, pptxToText, xlsxToText } from './officeText.js';
@@ -136,10 +136,20 @@ const DATASET_RULE = (datasets) =>
     ? 'Datasets are on. Where a case should run with several sets of input (valid and invalid values, roles, locales, boundaries), give it a dataset: `columns` names the variables, each row is one run (2 to 10 rows), and the steps refer to a column as <column>. Leave both empty for a case that needs no data.'
     : 'Datasets are off: leave every `dataset` with empty columns and rows.';
 
-const CATEGORY_RULE = (categories) =>
-  categories.length
-    ? `Write only cases in these categories: ${categories.join(', ')}.`
-    : 'Choose the category that fits each case; most will be Functional.';
+/** What the test-level categories mean, so the cases match the type chosen. */
+const CATEGORY_MEANING = {
+  Regression: 'Regression -- re-checks existing behaviour that this change could break (neighbouring flows, data already saved, earlier fixes), so nothing that worked before stops working.',
+  Sanity: 'Sanity -- a few quick, narrow checks that the changed feature basically works after a new build, enough to decide whether deeper testing is worth starting.',
+  Unit: 'Unit -- checks of one function, rule or component in isolation: its inputs, outputs, edge values and error handling, written precisely enough for a developer to automate.',
+};
+
+const CATEGORY_RULE = (categories) => {
+  if (!categories.length) {
+    return `Choose the category that fits each case from ${DEFAULT_CATEGORIES.join(', ')}; most will be Functional.`;
+  }
+  const meanings = categories.filter((c) => CATEGORY_MEANING[c]).map((c) => `- ${CATEGORY_MEANING[c]}`);
+  return [`Write only cases in these categories: ${categories.join(', ')}. Give each case the one category that fits it best.`, ...meanings].join('\n');
+};
 
 const OFFICE = { docx: docxToText, pptx: pptxToText, xlsx: xlsxToText };
 const TO_TEXT = { ...OFFICE, pdf: pdfToText };

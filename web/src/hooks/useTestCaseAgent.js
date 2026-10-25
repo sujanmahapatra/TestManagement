@@ -8,7 +8,7 @@ export const emptyAgentInput = (agentOptions) => ({
   files: [],
   platform: 'web',
   template: 'steps',
-  categories: [...(agentOptions?.categories ?? [])],
+  categories: [...(agentOptions?.defaultCategories ?? agentOptions?.categories ?? [])],
   priorities: [...(agentOptions?.priorities ?? [])],
   language: 'English',
   datasets: false,
@@ -54,7 +54,7 @@ export function useTestCaseAgent({ agentOptions, notify, projectId, repository =
     if (!agentOptions?.categories?.length) return;
     setInput((prev) => ({
       ...prev,
-      categories: prev.categories.length ? prev.categories : [...agentOptions.categories],
+      categories: prev.categories.length ? prev.categories : [...(agentOptions.defaultCategories ?? agentOptions.categories)],
       priorities: prev.priorities.length ? prev.priorities : [...agentOptions.priorities],
     }));
   }, [agentOptions]);
@@ -135,7 +135,11 @@ export function useTestCaseAgent({ agentOptions, notify, projectId, repository =
       // All selected means "everything", which needs no scope.
       const chosen = editable.filter((tc) => selected.has(tc.id));
       const scope = refinement && chosen.length > 0 && chosen.length < editable.length ? chosen.map((tc) => tc.id) : [];
-      const allTypes = input.categories.length === (agentOptions?.categories?.length ?? 0);
+      // The default selection (or every type) means "let the agent choose", which needs no list.
+      const defaults = agentOptions?.defaultCategories ?? agentOptions?.categories ?? [];
+      const allTypes =
+        input.categories.length === (agentOptions?.categories?.length ?? 0) ||
+        (input.categories.length === defaults.length && defaults.every((c) => input.categories.includes(c)));
       const body = {
         platform: input.platform,
         testType,

@@ -495,3 +495,20 @@ test('Excel puts each expectation on its own step row', async () => {
   assert.deepEqual(stepRows.map((r) => r[2] ?? ''), ['', 'The dashboard is shown']);
   assert.ok(rows.some((r) => r[0] === 'Priority' && r[1] === 'high'));
 });
+
+test('choosing Regression, Sanity or Unit tells the agent what each means; the default lets it choose', async () => {
+  const { client, calls } = stubClient(answer([{ name: 'Sign in', testCases: [modelCase({ category: 'Unit' })] }]));
+  setAgentClient(client);
+  const promptOf = (call) => call.params.messages[0].content.map((b) => b.text ?? '').join('\n');
+
+  const result = await runAgent(agentRequestSchema.parse({ platform: 'web', prompt: 'Sign in with email', categories: ['Unit', 'Sanity'] }), () => {});
+  const picked = promptOf(calls[0]);
+  assert.match(picked, /Write only cases in these categories: Unit, Sanity/);
+  assert.match(picked, /Unit -- checks of one function, rule or component in isolation/);
+  assert.match(picked, /Sanity -- a few quick, narrow checks/);
+  assert.doesNotMatch(picked, /Regression --/);
+  assert.equal(result.testCases[0].category, 'Unit');
+
+  await runAgent(agentRequestSchema.parse({ platform: 'web', prompt: 'Sign in with email' }), () => {});
+  assert.match(promptOf(calls[1]), /from Functional, UI\/UX, Security, Performance, Compatibility, Accessibility; most will be Functional/);
+});
