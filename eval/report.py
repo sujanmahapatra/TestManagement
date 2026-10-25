@@ -28,6 +28,16 @@ from app_client import BASE_URL, as_text, generate
 from groq_judge import GroqJudge
 
 HERE = Path(__file__).parent
+PLATFORMS = json.loads((HERE.parent / "server" / "config" / "generation.json").read_text(encoding="utf-8"))["platforms"]
+
+
+def given(sample):
+    """What the agent was given: the requirement plus the app's platform line
+    (its configured browsers / OS versions), so the judge does not count
+    those as invented."""
+    platform = PLATFORMS.get(sample.get("platform", "web"), {})
+    line = f"Platform under test: {platform.get('label', sample.get('platform'))} ({', '.join(platform.get('environments', []))})."
+    return f"{sample['prompt']}\n\n{line}"
 CACHE = HERE / ".cache"
 CACHE.mkdir(exist_ok=True)
 judge = GroqJudge()
@@ -80,7 +90,8 @@ def invented():
     return GEval(
         name="No Invented Details",
         evaluation_steps=[
-            "Read the requirement (input). Note every rule, limit, message, platform and target it states or clearly implies.",
+            "Read the requirement (input), including its 'Platform under test' line. Note every rule, limit, message, "
+            "platform, browser, OS version and target it states or clearly implies.",
             "Read the test cases (actual output). Ignore example test data a tester must pick anyway: sample names, emails, "
             "coupon codes, amounts, file names and values chosen inside a stated limit. These are not invented details.",
             "Also ignore checks that only say a non-functional target is 'agreed', 'supported' or 'not defined'.",
@@ -185,11 +196,11 @@ def measure(key, sample, result):
         return structure_check(sample, result["testCases"])
     text = as_text(result["testCases"])
     case = LLMTestCase(
-        input=sample["prompt"],
+        input=given(sample),
         actual_output=text,
         expected_output="\n".join(f"- {r}" for r in sample["requirements"]),
-        retrieval_context=[sample["prompt"]],
-        context=[sample["prompt"]],
+        retrieval_context=[given(sample)],
+        context=[given(sample)],
     )
     metric = factory()
     for attempt in range(1, 5):

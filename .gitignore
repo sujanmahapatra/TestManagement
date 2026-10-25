@@ -17,3 +17,5 @@ __pycache__/
 eval/.cache/
 eval/report.json
 eval/report.html
+eval/report-gptoss-judge.*
+eval/report-gemini-oldcases.json
