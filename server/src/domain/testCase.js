@@ -220,7 +220,21 @@ export function toFieldErrors(zodError) {
 /* ---------------- the test case agent ---------------- */
 
 /** What kind of quality a case checks -- independent of smoke/regression. */
-export const CATEGORIES = ['Functional', 'UI/UX', 'Security', 'Performance', 'Compatibility', 'Accessibility', 'Regression', 'Sanity', 'Unit'];
+export const CATEGORIES = [
+  'Functional',
+  'UI/UX',
+  'Security',
+  'Performance',
+  'Compatibility',
+  'Accessibility',
+  'Unit',
+  'Smoke',
+  'Sanity',
+  'Integration',
+  'System',
+  'Regression',
+  'API',
+];
 /** Selected in Settings by default; Regression, Sanity and Unit are chosen when wanted. */
 export const DEFAULT_CATEGORIES = CATEGORIES.slice(0, 6);
 

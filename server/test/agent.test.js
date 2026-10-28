@@ -512,3 +512,16 @@ test('choosing Regression, Sanity or Unit tells the agent what each means; the d
   await runAgent(agentRequestSchema.parse({ platform: 'web', prompt: 'Sign in with email' }), () => {});
   assert.match(promptOf(calls[1]), /from Functional, UI\/UX, Security, Performance, Compatibility, Accessibility; most will be Functional/);
 });
+
+test('Smoke, Integration, System and API are offered and each gets its definition', async () => {
+  const { CATEGORIES, DEFAULT_CATEGORIES } = await import('../src/domain/testCase.js');
+  for (const t of ['Unit', 'Smoke', 'Sanity', 'Integration', 'System', 'Regression', 'API', 'Performance']) assert.ok(CATEGORIES.includes(t), t);
+  assert.ok(!DEFAULT_CATEGORIES.includes('API'));
+
+  const { client, calls } = stubClient(answer([{ name: 'Orders API', testCases: [modelCase({ category: 'API' })] }]));
+  setAgentClient(client);
+  const result = await runAgent(agentRequestSchema.parse({ platform: 'api', prompt: 'POST /orders creates an order', categories: ['API', 'Integration', 'Smoke', 'System'] }), () => {});
+  const prompt = calls[0].params.messages[0].content.map((b) => b.text ?? '').join('\n');
+  for (const t of ['API --', 'Integration --', 'Smoke --', 'System --']) assert.ok(prompt.includes(t), t);
+  assert.equal(result.testCases[0].category, 'API');
+});

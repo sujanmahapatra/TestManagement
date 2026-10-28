@@ -141,6 +141,10 @@ const CATEGORY_MEANING = {
   Regression: 'Regression -- re-checks existing behaviour that this change could break (neighbouring flows, data already saved, earlier fixes), so nothing that worked before stops working.',
   Sanity: 'Sanity -- a few quick, narrow checks that the changed feature basically works after a new build, enough to decide whether deeper testing is worth starting.',
   Unit: 'Unit -- checks of one function, rule or component in isolation: its inputs, outputs, edge values and error handling, written precisely enough for a developer to automate.',
+  Smoke: 'Smoke -- the few broad checks that the build is stable enough to test at all: the app starts, the main screens open and the most important flows complete end to end.',
+  Integration: 'Integration -- checks that two or more parts work together: data passed between modules, services or third-party systems arrives intact, and a failure on one side is handled by the other.',
+  System: 'System -- checks of the whole application end to end in a production-like setup, against the requirement as a user would experience it, across every part involved.',
+  API: 'API -- checks of the interface directly, without the UI: each endpoint\'s request, response status, body and headers, validation of bad input, authentication and error responses.',
 };
 
 const CATEGORY_RULE = (categories) => {
