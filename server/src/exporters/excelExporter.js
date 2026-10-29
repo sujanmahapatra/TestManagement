@@ -32,7 +32,6 @@ const COLUMNS = [
   { header: 'Type', key: 'category', width: 14 },
   { header: 'Platform', key: 'platform', width: 12 },
   { header: 'Environments', key: 'environments', width: 26 },
-  { header: 'Tags', key: 'tags', width: 20 },
   { header: 'Linked issues', key: 'links', width: 16 },
 ];
 
@@ -70,7 +69,6 @@ function addCaseRows(sheet, testCase, id, banded) {
       category: first ? testCase.category ?? testCase.testTypeLabel ?? '' : '',
       platform: first ? testCase.platformLabel ?? '' : '',
       environments: first ? (testCase.environments ?? []).join('\n') : '',
-      tags: first ? (testCase.tags ?? []).join(', ') : '',
       links: first ? (testCase.links ?? []).join(', ') : '',
     });
     row.alignment = { wrapText: true, vertical: 'top' };
